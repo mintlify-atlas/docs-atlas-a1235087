@@ -1,0 +1,319 @@
+---
+title: Architecture Overview
+description: High-level architecture and system design of the Streamer Alerts Discord Bot
+---
+
+## System Architecture
+
+The Streamer Alerts Bot is a real-time monitoring system that polls streaming platforms and sends Discord notifications when streamers go live. The architecture follows a modular, event-driven design with clear separation of concerns.
+
+### Core Components
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Discord Bot                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐  │
+│  │              │      │              │      │              │  │
+│  │  StreamerBot │──────│ StreamPoller │──────│ AlertService │  │
+│  │   (Client)   │      │  (Polling)   │      │ (Messaging)  │  │
+│  │              │      │              │      │              │  │
+│  └──────┬───────┘      └──────┬───────┘      └──────┬───────┘  │
+│         │                     │                     │          │
+│         │                     │                     │          │
+│  ┌──────▼───────┐      ┌──────▼───────┐      ┌──────▼───────┐  │
+│  │              │      │              │      │              │  │
+│  │   Commands   │      │   Database   │      │  Components  │  │
+│  │   /streamer  │      │ (JSON Cache) │      │   (Embeds)   │  │
+│  │              │      │              │      │              │  │
+│  └──────────────┘      └──────────────┘      └──────────────┘  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ HTTP Requests (60s interval)
+                              ▼
+         ┌────────────────────────────────────────────┐
+         │    Streaming Platforms (Public APIs)       │
+         ├────────────────────────────────────────────┤
+         │  Kick  │  Twitch  │  YouTube  │  Rumble   │
+         └────────────────────────────────────────────┘
+```
+
+<Note>
+The bot uses **no API keys** - it relies on public endpoints and HTML parsing to fetch stream status, making setup simpler and avoiding rate limits.
+</Note>
+
+## Component Breakdown
+
+### 1. StreamerBot (Discord Client)
+
+The extended Discord.js client that manages bot lifecycle and state.
+
+**Responsibilities:**
+- Initialize Discord connection with required intents
+- Register and store slash commands
+- Update bot activity status (e.g., "Watching 25 streamers | 10 servers")
+- Provide centralized command registry
+
+**Key Features:**
+```typescript
+export class StreamerBot extends Client implements StreamerBotClient {
+  public commands: Collection<string, Command>;
+  public updateActivity(): void;
+  public startActivityRotation(intervalMs: number = 30_000): void;
+}
+```
+
+See: `~/workspace/source/src/client/StreamerBot.ts`
+
+### 2. StreamPoller (Polling Engine)
+
+The core polling service that checks stream status at regular intervals.
+
+**Responsibilities:**
+- Run 60-second polling loop
+- Fetch live status from platform checkers
+- Detect new streams and title changes
+- Manage duplicate alert prevention cache
+- Update streamer data in database
+
+**Key Mechanisms:**
+- **Interval-based polling**: Uses `setInterval` with `POLL_INTERVAL` (60,000ms)
+- **Per-guild processing**: Iterates through all guilds with tracked streamers
+- **Caching layer**: In-memory `Map` tracks last known state to prevent duplicates
+
+<Info>
+The poller runs **immediately** on startup, then continues every 60 seconds. This ensures users see alerts quickly after bot restart.
+</Info>
+
+See: `~/workspace/source/src/services/StreamPoller.ts`
+
+### 3. AlertService (Notification Dispatcher)
+
+Handles sending formatted Discord messages to notification channels.
+
+**Responsibilities:**
+- Fetch Discord channel by ID
+- Create rich embeds with stream information
+- Add interactive buttons ("Watch" links)
+- Handle messaging errors gracefully
+
+**Message Format:**
+- Platform-colored embed with streamer info
+- Stream title, viewers, followers, start time
+- Thumbnail preview image
+- Action button linking to stream
+
+See: `~/workspace/source/src/services/AlertService.ts`
+
+### 4. Database (JSON File Storage)
+
+Simple file-based persistence using JSON.
+
+**Storage Model:**
+```typescript
+interface GuildSettings {
+  streamers: Streamer[];
+}
+
+interface Streamer {
+  id: string;           // "platform:username"
+  platform: Platform;   // kick, twitch, youtube, rumble, tiktok
+  username: string;
+  channelId: string;    // Discord channel ID for notifications
+  isLive: boolean;
+  title?: string;
+  viewers?: number;
+  followers?: number;
+  thumbnail?: string;
+  profileImage?: string;
+  lastLiveAt?: string;
+  startedAt?: string;
+  verified?: boolean;
+  bio?: string;
+}
+```
+
+**Operations:**
+- Load on startup from `data/guilds.json`
+- Maintain in-memory cache (`Map<guildId, GuildSettings>`)
+- Save to disk on every modification
+- Automatic directory creation if missing
+
+See: `~/workspace/source/src/database/index.ts`
+
+### 5. Platform Checkers
+
+Modular platform-specific parsers for fetching stream status.
+
+**Supported Platforms:**
+- **Kick**: HTML parsing
+- **Twitch**: Public GraphQL API
+- **YouTube**: HTML parsing
+- **Rumble**: HTML parsing
+- **TikTok**: HTML parsing
+
+**Interface:**
+```typescript
+type PlatformChecker = (username: string) => Promise<LiveStatus>;
+
+interface LiveStatus {
+  platform: Platform;
+  username: string;
+  isLive: boolean;
+  url: string;
+  title?: string;
+  viewers?: number;
+  followers?: number;
+  thumbnail?: string;
+  profileImage?: string;
+  startedAt?: string;
+  verified?: boolean;
+  bio?: string;
+}
+```
+
+See: `~/workspace/source/src/platforms/index.ts`
+
+## Data Flow
+
+### Bot Startup Sequence
+
+```typescript
+// 1. Initialize client
+const client = createClient();
+
+// 2. Register commands and events
+registerCommands(client);
+registerEvents(client);
+
+// 3. Login to Discord
+await client.login(token);
+
+// 4. On ready event:
+//    - Start activity rotation (every 30s)
+//    - Start stream poller (every 60s)
+```
+
+See: `~/workspace/source/src/index.ts:10-36`
+
+### Alert Trigger Flow
+
+```
+User adds streamer → Stored in database
+                           ↓
+                  Polling loop starts
+                           ↓
+             Check all platforms (60s)
+                           ↓
+              Compare with cache state
+                           ↓
+        ┌──────────────────┴──────────────────┐
+        │                                     │
+    NOT LIVE                             IS LIVE
+        │                                     │
+        ↓                                     ↓
+  Clean cache                    ┌────────────┴────────────┐
+                                 │                         │
+                          Was already live          New stream!
+                                 │                         │
+                                 ↓                         ↓
+                        Check title changed        Send alert
+                                 │                         │
+                                 ↓                         ↓
+                        Yes → Send alert           Update cache
+                        No → Skip alert
+```
+
+## Technology Stack
+
+### Core Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|----------|
+| `discord.js` | v14 | Discord API wrapper |
+| `typescript` | Latest | Type safety |
+| `dotenv` | Latest | Environment variables |
+| `cheerio` | Latest | HTML parsing for platforms |
+
+### Runtime Requirements
+
+- **Node.js**: v18 or higher (for native fetch API)
+- **Intents**: `Guilds`, `GuildMessages`
+- **Permissions**: Send Messages, Embed Links, Use External Emojis
+
+## Design Principles
+
+### 1. Type Safety
+
+Full TypeScript coverage with strict mode enabled. All API interactions are typed.
+
+### 2. Modularity
+
+Each component is isolated:
+- Platform checkers are plug-and-play
+- Database is abstracted behind functions
+- Services don't depend on each other directly
+
+### 3. Error Resilience
+
+- Per-streamer error handling (one failure doesn't crash the loop)
+- Graceful degradation when channels are deleted
+- Comprehensive logging at all levels
+
+### 4. Simplicity
+
+- No external database required
+- No API keys or OAuth flows
+- Single environment variable (Discord token)
+- JSON file storage is human-readable and git-friendly
+
+<Note>
+The bot is designed to be **self-contained** and **easy to deploy**. Everything runs in a single process with minimal external dependencies.
+</Note>
+
+## Performance Considerations
+
+### Polling Efficiency
+
+- **60-second interval** balances freshness with API load
+- **Sequential processing** per guild prevents rate limiting
+- **In-memory cache** eliminates database reads during polling
+- **Batch updates** reduce disk I/O
+
+### Scalability
+
+The current architecture supports:
+- **Hundreds of guilds**: Database is in-memory, disk writes are async
+- **Thousands of streamers**: Polling is staggered across the interval
+- **Concurrent alerts**: Discord rate limits are handled by discord.js
+
+### Future Optimizations
+
+- [ ] Database migration to SQLite or PostgreSQL
+- [ ] Parallel platform checking with rate limiting
+- [ ] Redis cache for distributed deployments
+- [ ] Webhook-based alerts (when platforms support it)
+
+## Security
+
+### Stored Data
+
+- No user tokens or API keys stored
+- Only public streamer information cached
+- Guild settings are server-specific (no cross-server data leaks)
+
+### Input Validation
+
+- Discord handles command parameter validation
+- Platform checkers validate usernames
+- Database IDs use safe format: `platform:username`
+
+### Error Handling
+
+- Uncaught exceptions logged and exit process
+- Unhandled promise rejections logged (non-fatal)
+- Per-operation try-catch blocks prevent cascading failures
+
+See: `~/workspace/source/src/index.ts:38-46`

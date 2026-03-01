@@ -1,0 +1,325 @@
+---
+title: 'Contributing Guidelines'
+description: 'How to contribute to the Streamer Alerts Discord Bot project'
+---
+
+We welcome contributions to the Streamer Alerts Bot! This guide will help you get started.
+
+## Code of Conduct
+
+By participating in this project, you agree to maintain a respectful and inclusive environment. Be kind, constructive, and collaborative.
+
+## Ways to Contribute
+
+<CardGroup cols={2}>
+  <Card title="Report Bugs" icon="bug">
+    Found a bug? Open an issue on GitHub with details about the problem and steps to reproduce it.
+  </Card>
+  <Card title="Suggest Features" icon="lightbulb">
+    Have an idea? Open an issue to discuss new features or improvements.
+  </Card>
+  <Card title="Add Platforms" icon="plug">
+    Add support for new streaming platforms by following the platform implementation guide.
+  </Card>
+  <Card title="Improve Documentation" icon="book">
+    Help improve these docs or add examples to make the project more accessible.
+  </Card>
+</CardGroup>
+
+## Getting Started
+
+<Steps>
+<Step title="Fork the repository">
+
+Fork the repository on GitHub and clone your fork:
+
+```bash
+git clone https://github.com/YOUR_USERNAME/streamer-alerts-discord-bot.git
+cd streamer-alerts-discord-bot
+```
+
+</Step>
+
+<Step title="Create a branch">
+
+Create a new branch for your changes:
+
+```bash
+git checkout -b feature/your-feature-name
+```
+
+Use descriptive branch names:
+- `feature/add-facebook-gaming` - New features
+- `fix/polling-memory-leak` - Bug fixes
+- `docs/update-readme` - Documentation updates
+- `refactor/platform-checkers` - Code refactoring
+
+</Step>
+
+<Step title="Make your changes">
+
+Make your changes following the code style guidelines below. Remember to:
+
+- Write clear, descriptive commit messages
+- Add comments for complex logic
+- Update documentation if needed
+- Test your changes thoroughly
+
+</Step>
+
+<Step title="Test your changes">
+
+Run the test suite and linters:
+
+```bash
+# Type check
+npm run typecheck
+
+# Lint
+npm run lint
+
+# Format code
+npm run format
+
+# Test the bot
+npm run dev
+```
+
+</Step>
+
+<Step title="Commit your changes">
+
+Commit your changes with a clear message:
+
+```bash
+git add .
+git commit -m "feat: add support for Facebook Gaming platform"
+```
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/) format:
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `docs:` - Documentation changes
+- `refactor:` - Code refactoring
+- `test:` - Adding tests
+- `chore:` - Maintenance tasks
+
+</Step>
+
+<Step title="Push and create a pull request">
+
+Push your changes and create a pull request:
+
+```bash
+git push origin feature/your-feature-name
+```
+
+Then open a pull request on GitHub with:
+- Clear title describing the change
+- Description of what changed and why
+- Screenshots (if applicable)
+- Reference to any related issues
+
+</Step>
+</Steps>
+
+## Code Style Guidelines
+
+### TypeScript
+
+The project uses strict TypeScript configuration. Follow these guidelines:
+
+```typescript
+// ✅ Good: Explicit types, proper error handling
+export async function checkPlatform(username: string): Promise<LiveStatus> {
+  const baseResult: LiveStatus = {
+    isLive: false,
+    platform: "example",
+    username,
+    url: `https://example.com/${username}`,
+  };
+
+  try {
+    const response = await fetch(`https://api.example.com/users/${username}`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    // Process data...
+  } catch (error) {
+    logger.error("Error:", error);
+    return { ...baseResult, error: String(error) };
+  }
+}
+
+// ❌ Bad: No types, poor error handling
+export async function checkPlatform(username) {
+  const response = await fetch(`https://api.example.com/users/${username}`);
+  return await response.json();
+}
+```
+
+### Code Formatting
+
+We use **Prettier** for code formatting:
+
+- 2 spaces for indentation
+- Semicolons required
+- Double quotes for strings
+- Trailing commas in multi-line structures
+
+Run `npm run format` before committing.
+
+### ESLint Rules
+
+The project uses ESLint with TypeScript rules:
+
+```bash
+npm run lint
+```
+
+Fix auto-fixable issues:
+
+```bash
+npm run lint -- --fix
+```
+
+### File Naming
+
+- Use lowercase with hyphens: `platform-checker.ts`
+- Use `.ts` extension for TypeScript files
+- Keep file names descriptive and concise
+
+### Import Style
+
+```typescript
+// ✅ Good: Use .js extensions (TypeScript requirement for ES modules)
+import { logger } from "../utils/logger.js";
+import type { LiveStatus } from "./types.js";
+
+// ❌ Bad: Missing .js extension
+import { logger } from "../utils/logger";
+```
+
+<Warning>
+The project uses ES modules. Always include `.js` extensions in imports, even for TypeScript files.
+</Warning>
+
+## Pull Request Guidelines
+
+### PR Title
+
+Use a clear, descriptive title:
+
+- ✅ `feat: add support for Facebook Gaming platform`
+- ✅ `fix: resolve memory leak in polling service`
+- ❌ `updates`
+- ❌ `fix bug`
+
+### PR Description Template
+
+```markdown
+## Description
+Brief description of changes
+
+## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+
+## Testing
+- [ ] Tested locally
+- [ ] TypeScript checks pass
+- [ ] ESLint checks pass
+- [ ] Code formatted with Prettier
+
+## Related Issues
+Closes #123
+
+## Screenshots (if applicable)
+```
+
+### What Gets Reviewed
+
+Reviewers will check:
+
+- **Code quality**: Is the code clean, readable, and maintainable?
+- **Type safety**: Are types properly defined and used?
+- **Error handling**: Are errors caught and logged appropriately?
+- **Testing**: Have you tested the changes?
+- **Documentation**: Are code comments and docs updated?
+- **Style**: Does code follow the project's style guidelines?
+
+## Adding New Platforms
+
+When adding a new platform:
+
+1. Follow the [Adding Platforms guide](/development/adding-platforms)
+2. Include test cases for live and offline states
+3. Add platform colors and emojis from official branding
+4. Document any API limitations or quirks
+5. Update the platform list in the README
+
+## Documentation Contributions
+
+Documentation is just as important as code:
+
+- Fix typos and grammatical errors
+- Improve clarity and readability
+- Add examples and code snippets
+- Update outdated information
+- Add screenshots or diagrams
+
+## Project Structure
+
+Understand the codebase structure:
+
+```
+src/
+├── commands/              # Discord slash commands
+│   ├── help.ts           # /help command
+│   ├── ping.ts           # /ping command
+│   └── streamer.ts       # /streamer add/remove/list
+├── events/                # Discord.js event handlers
+│   ├── ready.ts          # Bot ready event
+│   └── interactionCreate.ts  # Handle interactions
+├── platforms/             # Platform checker implementations
+│   ├── index.ts          # Platform registry
+│   ├── kick.ts           # Kick checker
+│   ├── twitch.ts         # Twitch checker
+│   ├── youtube.ts        # YouTube checker
+│   ├── rumble.ts         # Rumble checker
+│   ├── tiktok.ts         # TikTok checker
+│   └── types.ts          # Platform types
+├── services/              # Core services
+│   ├── polling.ts        # 60-second polling loop
+│   └── database.ts       # Enmap database wrapper
+├── types/                 # TypeScript type definitions
+│   └── streamer.ts       # Streamer and LiveStatus types
+├── utils/                 # Utility functions
+│   ├── constants.ts      # Platform configs, colors, emojis
+│   ├── formatters.ts     # String formatting utilities
+│   └── logger.ts         # Logging utility
+└── index.ts               # Bot entry point
+```
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the [MIT License](https://github.com/BankkRoll/streamer-alerts-discord-bot/blob/main/LICENSE).
+
+<Info>
+**Copyright**: All contributions are Copyright (c) 2023 Bankk and contributors.
+</Info>
+
+## Questions?
+
+If you have questions:
+
+- Open a [GitHub Discussion](https://github.com/BankkRoll/streamer-alerts-discord-bot/discussions)
+- Open an [Issue](https://github.com/BankkRoll/streamer-alerts-discord-bot/issues) for bugs or feature requests
+- Check existing documentation and issues first
+
+## Recognition
+
+All contributors will be recognized in the project. Thank you for helping make this project better!

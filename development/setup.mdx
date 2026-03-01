@@ -1,0 +1,181 @@
+---
+title: 'Development Setup'
+description: 'Set up your local development environment for the Streamer Alerts Bot'
+---
+
+Get started with developing the Streamer Alerts Bot by setting up your local environment.
+
+## Prerequisites
+
+<Info>
+  **Required:**
+  - Node.js version 18.0.0 or higher
+  - npm, yarn, or pnpm package manager
+  - Git for version control
+  - Discord bot token ([create one here](https://discord.com/developers/applications))
+</Info>
+
+## Installation
+
+<Steps>
+<Step title="Clone the repository">
+
+Clone the repository and navigate to the project directory:
+
+```bash
+git clone https://github.com/BankkRoll/streamer-alerts-discord-bot.git
+cd streamer-alerts-discord-bot
+```
+
+</Step>
+
+<Step title="Install dependencies">
+
+Install the required dependencies using your preferred package manager:
+
+<CodeGroup>
+
+```bash npm
+npm install
+```
+
+```bash yarn
+yarn install
+```
+
+```bash pnpm
+pnpm install
+```
+
+</CodeGroup>
+
+<Note>
+The bot uses **discord.js v14** and requires **Node.js 18+** to run properly.
+</Note>
+
+</Step>
+
+<Step title="Configure environment variables">
+
+Copy the example environment file and add your Discord bot token:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and add your Discord bot token:
+
+```bash .env
+DISCORD_TOKEN=your_token_here
+```
+
+</Step>
+
+<Step title="Deploy slash commands">
+
+Register the bot's slash commands with Discord:
+
+```bash
+npm run deploy
+```
+
+This script deploys the following commands:
+- `/streamer add` - Add a streamer to track
+- `/streamer remove` - Remove a tracked streamer
+- `/streamer list` - List all tracked streamers
+- `/help` - Interactive help menu
+- `/ping` - Check bot latency
+
+</Step>
+</Steps>
+
+## Development Commands
+
+The project includes several npm scripts for development:
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Run the bot with hot reload using tsx watch |
+| `npm run build` | Compile TypeScript to JavaScript in `dist/` |
+| `npm start` | Start the compiled bot from `dist/index.js` |
+| `npm run typecheck` | Type-check without emitting files |
+| `npm run lint` | Lint TypeScript files with ESLint |
+| `npm run format` | Format code with Prettier |
+| `npm run deploy` | Deploy slash commands to Discord |
+
+## Running the Bot
+
+### Development Mode
+
+For active development with automatic reloading:
+
+```bash
+npm run dev
+```
+
+This uses `tsx watch` to automatically restart the bot when you make changes to the source code.
+
+### Production Mode
+
+For running the built version:
+
+```bash
+npm run build
+npm start
+```
+
+## Project Structure
+
+The bot follows a modular TypeScript architecture:
+
+```
+src/
+├── commands/          # Slash command definitions
+├── events/            # Discord.js event handlers
+├── platforms/         # Platform checker implementations
+│   ├── index.ts      # Platform registry
+│   ├── kick.ts       # Kick platform checker
+│   ├── twitch.ts     # Twitch platform checker
+│   ├── youtube.ts    # YouTube platform checker
+│   ├── rumble.ts     # Rumble platform checker
+│   └── tiktok.ts     # TikTok platform checker
+├── services/          # Core services (polling, database)
+├── types/             # TypeScript type definitions
+└── utils/             # Helper functions
+```
+
+## TypeScript Configuration
+
+The project uses strict TypeScript settings for type safety:
+
+```json tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true
+  }
+}
+```
+
+<Warning>
+The project uses ES modules (`"type": "module"` in package.json). Make sure to use `.js` extensions in your imports even though you're writing TypeScript.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Adding Platforms" icon="plug" href="/development/adding-platforms">
+    Learn how to add support for new streaming platforms
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/development/contributing">
+    Read the contributing guidelines and best practices
+  </Card>
+</CardGroup>

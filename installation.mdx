@@ -1,0 +1,219 @@
+---
+title: Installation
+description: Step-by-step guide to install and run Streamer Alerts Bot
+---
+
+## Prerequisites
+
+Before installing the bot, ensure you have the following:
+
+<CardGroup cols={2}>
+  <Card title="Node.js" icon="node-js">
+    Version 18.0.0 or higher
+  </Card>
+  <Card title="Discord bot token" icon="discord">
+    From Discord Developer Portal
+  </Card>
+</CardGroup>
+
+### Create a Discord bot
+
+If you haven't created a Discord bot yet:
+
+<Steps>
+  <Step title="Visit Discord Developer Portal">
+    Go to [discord.com/developers/applications](https://discord.com/developers/applications) and click "New Application"
+  </Step>
+  
+  <Step title="Create bot user">
+    Navigate to the "Bot" section and click "Add Bot". Confirm by clicking "Yes, do it!"
+  </Step>
+  
+  <Step title="Copy bot token">
+    Under the bot username, click "Reset Token" and copy the token. Keep this secret!
+    
+    <Warning>
+      Never share your bot token publicly. Anyone with access to your token can control your bot.
+    </Warning>
+  </Step>
+  
+  <Step title="Enable required intents">
+    Scroll down to "Privileged Gateway Intents" and enable:
+    - `Guilds`
+    - `GuildMessages`
+  </Step>
+  
+  <Step title="Invite bot to your server">
+    Go to the "OAuth2" > "URL Generator" section:
+    - Select scope: `bot` and `applications.commands`
+    - Select permissions: `Send Messages`, `Embed Links`, `Use External Emojis`
+    - Copy the generated URL and open it in your browser to invite the bot
+  </Step>
+</Steps>
+
+## Installation steps
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the bot repository to your local machine:
+    
+    ```bash
+    git clone https://github.com/yourusername/streamer-alerts-bot.git
+    cd streamer-alerts-bot
+    ```
+  </Step>
+  
+  <Step title="Install dependencies">
+    Install the required Node.js packages:
+    
+    ```bash
+    npm install
+    ```
+    
+    This will install the following core dependencies:
+    - `discord.js` (v14.14.1+) - Discord API wrapper
+    - `dotenv` (v16.3.1+) - Environment variable management
+  </Step>
+  
+  <Step title="Configure environment variables">
+    Copy the example environment file:
+    
+    ```bash
+    cp .env.example .env
+    ```
+    
+    Edit `.env` and add your Discord credentials:
+    
+    ```bash
+    DISCORD_TOKEN=your_bot_token_here
+    CLIENT_ID=your_client_id_here
+    ```
+    
+    <Note>
+      See the [Configuration](/configuration) page for detailed information about environment variables.
+    </Note>
+  </Step>
+  
+  <Step title="Deploy slash commands">
+    Register the bot's slash commands with Discord:
+    
+    ```bash
+    npm run deploy
+    ```
+    
+    <Note>
+      For instant command deployment during development, add a `GUILD_ID` to your `.env` file. Without it, global deployment takes up to 1 hour to propagate.
+    </Note>
+  </Step>
+  
+  <Step title="Start the bot">
+    Launch the bot:
+    
+    ```bash
+    npm start
+    ```
+    
+    You should see output indicating successful login:
+    
+    ```
+    [INFO] Logging in...
+    [INFO] Logged in as YourBotName#1234
+    [INFO] Started polling for 0 streamers across 1 guilds
+    ```
+  </Step>
+</Steps>
+
+## Development mode
+
+For development, use these additional commands:
+
+<CodeGroup>
+
+```bash npm run dev
+# Run with hot reload using tsx watch
+npm run dev
+```
+
+```bash npm run build
+# Compile TypeScript to JavaScript
+npm run build
+```
+
+```bash npm run typecheck
+# Check types without building
+npm run typecheck
+```
+
+```bash npm run lint
+# Lint code with ESLint
+npm run lint
+```
+
+</CodeGroup>
+
+## Verify installation
+
+Once the bot is running, verify it works:
+
+<Steps>
+  <Step title="Check bot status">
+    In Discord, verify your bot appears online in the member list
+  </Step>
+  
+  <Step title="Test ping command">
+    Type `/ping` in any channel the bot has access to. You should receive a response with the bot's latency
+  </Step>
+  
+  <Step title="Add a streamer">
+    Try adding a streamer with `/streamer add platform:Twitch username:ninja`
+  </Step>
+</Steps>
+
+<Note>
+  If commands don't appear, wait a few minutes for Discord to register them, or restart your Discord client.
+</Note>
+
+## Troubleshooting
+
+### Bot doesn't respond to commands
+
+- Verify the bot has the required permissions in your server
+- Check that slash commands were deployed with `npm run deploy`
+- Ensure the bot token and client ID in `.env` are correct
+- Try restarting your Discord client to refresh the command cache
+
+### "DISCORD_TOKEN is not set" error
+
+The bot validates environment variables on startup. From `src/index.ts`:
+
+```typescript
+const token = process.env.DISCORD_TOKEN;
+
+if (!token) {
+  logger.error("DISCORD_TOKEN is not set in environment variables");
+  process.exit(1);
+}
+```
+
+Ensure your `.env` file exists and contains a valid `DISCORD_TOKEN`.
+
+### Module not found errors
+
+If you see module resolution errors:
+
+```bash
+# Clean install dependencies
+rm -rf node_modules package-lock.json
+npm install
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Learn about environment variables and bot permissions
+  </Card>
+  <Card title="Usage guide" icon="book">
+    Discover how to use all bot commands effectively
+  </Card>
+</CardGroup>

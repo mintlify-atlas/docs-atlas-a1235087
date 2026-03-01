@@ -1,0 +1,654 @@
+---
+title: 'Database'
+description: 'Database functions for managing guild settings and streamer tracking'
+---
+
+## Overview
+
+The database module provides a JSON file-based storage system for guild settings and streamer tracking. All data is persisted to `data/guilds.json`.
+
+```typescript
+import {
+  getGuildSettings,
+  getStreamers,
+  addStreamer,
+  removeStreamer,
+  updateStreamer,
+  updateStreamers,
+  createStreamerId,
+  parseStreamerId,
+  getAllGuildsWithStreamers,
+  getTotalStreamerCount,
+} from './database/index.js';
+```
+
+---
+
+## Guild Management
+
+### getGuildSettings()
+
+Get all settings for a guild, creating default settings if none exist.
+
+```typescript
+const settings = getGuildSettings('123456789');
+console.log(settings.streamers.length);
+```
+
+**Signature:**
+```typescript
+export function getGuildSettings(guildId: string): GuildSettings
+```
+
+<ParamField path="guildId" type="string" required>
+  Discord guild (server) ID
+</ParamField>
+
+<ResponseField name="return" type="GuildSettings">
+  Guild settings object
+  
+  <Expandable title="GuildSettings structure">
+    <ResponseField name="streamers" type="Streamer[]">
+      Array of tracked streamers for this guild
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Default Settings:**
+```typescript
+const defaultSettings: GuildSettings = {
+  streamers: [],
+};
+```
+
+**Example:**
+```typescript
+const settings = getGuildSettings('987654321');
+if (settings.streamers.length === 0) {
+  console.log('No streamers tracked yet');
+}
+```
+
+---
+
+## Streamer Queries
+
+### getStreamers()
+
+Get all tracked streamers for a guild.
+
+```typescript
+const streamers = getStreamers('123456789');
+streamers.forEach(s => console.log(s.username));
+```
+
+**Signature:**
+```typescript
+export function getStreamers(guildId: string): Streamer[]
+```
+
+<ParamField path="guildId" type="string" required>
+  Discord guild ID
+</ParamField>
+
+<ResponseField name="return" type="Streamer[]">
+  Array of streamer objects
+</ResponseField>
+
+**Example:**
+```typescript
+const streamers = getStreamers('123456789');
+const liveStreamers = streamers.filter(s => s.isLive);
+
+console.log(`${liveStreamers.length} of ${streamers.length} are live`);
+```
+
+---
+
+### getStreamer()
+
+Get a specific streamer by ID.
+
+```typescript
+const streamer = getStreamer('123456789', 'twitch:xqc');
+if (streamer) {
+  console.log(streamer.username);
+}
+```
+
+**Signature:**
+```typescript
+export function getStreamer(
+  guildId: string,
+  streamerId: string
+): Streamer | undefined
+```
+
+<ParamField path="guildId" type="string" required>
+  Discord guild ID
+</ParamField>
+
+<ParamField path="streamerId" type="string" required>
+  Streamer ID in format `platform:username`
+</ParamField>
+
+<ResponseField name="return" type="Streamer | undefined">
+  Streamer object if found, otherwise `undefined`
+</ResponseField>
+
+**Example:**
+```typescript
+const id = createStreamerId('twitch', 'xqc');
+const streamer = getStreamer('123456789', id);
+
+if (streamer) {
+  console.log(`Found: ${streamer.username} on ${streamer.platform}`);
+  console.log(`Live: ${streamer.isLive}`);
+  console.log(`Channel: ${streamer.channelId}`);
+}
+```
+
+---
+
+### getAllGuildsWithStreamers()
+
+Get all guilds that have tracked streamers.
+
+```typescript
+const guilds = getAllGuildsWithStreamers();
+guilds.forEach(({ guildId, streamers }) => {
+  console.log(`Guild ${guildId}: ${streamers.length} streamers`);
+});
+```
+
+**Signature:**
+```typescript
+export function getAllGuildsWithStreamers(): Array<{
+  guildId: string;
+  streamers: Streamer[];
+}>
+```
+
+<ResponseField name="return" type="Array<{ guildId: string; streamers: Streamer[] }>">
+  Array of objects containing guild ID and their streamers
+</ResponseField>
+
+**Example:**
+```typescript
+const guilds = getAllGuildsWithStreamers();
+
+for (const { guildId, streamers } of guilds) {
+  console.log(`\nGuild ${guildId}:`);
+  for (const streamer of streamers) {
+    console.log(`  - ${streamer.username} (${streamer.platform})`);
+  }
+}
+```
+
+---
+
+### getTotalStreamerCount()
+
+Get total number of tracked streamers across all guilds.
+
+```typescript
+const total = getTotalStreamerCount();
+console.log(`Tracking ${total} streamers`);
+```
+
+**Signature:**
+```typescript
+export function getTotalStreamerCount(): number
+```
+
+<ResponseField name="return" type="number">
+  Total streamer count across all guilds
+</ResponseField>
+
+**Example:**
+```typescript
+const total = getTotalStreamerCount();
+const guilds = getAllGuildsWithStreamers();
+const avgPerGuild = (total / guilds.length).toFixed(1);
+
+console.log(`${total} streamers across ${guilds.length} guilds`);
+console.log(`Average: ${avgPerGuild} streamers per guild`);
+```
+
+---
+
+## Streamer Mutations
+
+### addStreamer()
+
+Add a streamer to a guild's tracking list.
+
+```typescript
+const streamer = {
+  id: 'twitch:xqc',
+  platform: 'twitch',
+  username: 'xqc',
+  channelId: '123456789',
+  isLive: false,
+};
+
+const success = addStreamer('987654321', streamer);
+```
+
+**Signature:**
+```typescript
+export function addStreamer(guildId: string, streamer: Streamer): boolean
+```
+
+<ParamField path="guildId" type="string" required>
+  Discord guild ID
+</ParamField>
+
+<ParamField path="streamer" type="Streamer" required>
+  Streamer object to add
+  
+  <Expandable title="Required Streamer fields">
+    <ParamField path="id" type="string" required>
+      Unique ID: `platform:username` (use `createStreamerId()`)
+    </ParamField>
+    
+    <ParamField path="platform" type="Platform" required>
+      Platform: `"kick"`, `"twitch"`, `"youtube"`, `"rumble"`, or `"tiktok"`
+    </ParamField>
+    
+    <ParamField path="username" type="string" required>
+      Platform username
+    </ParamField>
+    
+    <ParamField path="channelId" type="string" required>
+      Discord channel ID for alerts
+    </ParamField>
+    
+    <ParamField path="isLive" type="boolean" required>
+      Current live status (usually `false` on creation)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  `true` if added successfully, `false` if streamer already exists
+</ResponseField>
+
+**Example:**
+```typescript
+import { addStreamer, createStreamerId } from './database/index.js';
+
+const newStreamer = {
+  id: createStreamerId('youtube', 'ludwig'),
+  platform: 'youtube' as const,
+  username: 'ludwig',
+  channelId: '123456789',
+  isLive: false,
+};
+
+if (addStreamer('987654321', newStreamer)) {
+  console.log('Streamer added successfully');
+} else {
+  console.log('Streamer already exists');
+}
+```
+
+---
+
+### removeStreamer()
+
+Remove a streamer from a guild's tracking list.
+
+```typescript
+const removed = removeStreamer('123456789', 'twitch:xqc');
+```
+
+**Signature:**
+```typescript
+export function removeStreamer(guildId: string, streamerId: string): boolean
+```
+
+<ParamField path="guildId" type="string" required>
+  Discord guild ID
+</ParamField>
+
+<ParamField path="streamerId" type="string" required>
+  Streamer ID: `platform:username`
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  `true` if removed successfully, `false` if streamer not found
+</ResponseField>
+
+**Example:**
+```typescript
+const id = createStreamerId('kick', 'trainwreckstv');
+const removed = removeStreamer('123456789', id);
+
+if (removed) {
+  console.log('Streamer removed');
+} else {
+  console.log('Streamer not found');
+}
+```
+
+---
+
+### updateStreamer()
+
+Update a streamer's data with partial updates.
+
+```typescript
+const updated = updateStreamer('123456789', 'twitch:xqc', {
+  isLive: true,
+  viewers: 50000,
+  title: 'GAMING',
+});
+```
+
+**Signature:**
+```typescript
+export function updateStreamer(
+  guildId: string,
+  streamerId: string,
+  data: Partial<Streamer>
+): boolean
+```
+
+<ParamField path="guildId" type="string" required>
+  Discord guild ID
+</ParamField>
+
+<ParamField path="streamerId" type="string" required>
+  Streamer ID: `platform:username`
+</ParamField>
+
+<ParamField path="data" type="Partial<Streamer>" required>
+  Partial streamer object with fields to update
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  `true` if updated successfully, `false` if streamer not found
+</ResponseField>
+
+**Example:**
+```typescript
+// Update live status and viewer count
+const success = updateStreamer('123', 'twitch:xqc', {
+  isLive: true,
+  viewers: 75000,
+  title: 'VALORANT RANKED',
+  startedAt: new Date().toISOString(),
+});
+
+if (success) {
+  console.log('Streamer updated');
+}
+```
+
+---
+
+### updateStreamers()
+
+Replace all streamers for a guild with a new array.
+
+```typescript
+updateStreamers('123456789', updatedStreamers);
+```
+
+**Signature:**
+```typescript
+export function updateStreamers(guildId: string, streamers: Streamer[]): void
+```
+
+<ParamField path="guildId" type="string" required>
+  Discord guild ID
+</ParamField>
+
+<ParamField path="streamers" type="Streamer[]" required>
+  New array of streamers (replaces existing)
+</ParamField>
+
+**Example:**
+```typescript
+import { getStreamers, updateStreamers } from './database/index.js';
+
+const streamers = getStreamers('123456789');
+
+// Update all streamers
+const updated = streamers.map(s => ({
+  ...s,
+  isLive: false, // Mark all as offline
+}));
+
+updateStreamers('123456789', updated);
+```
+
+**Use Case:**
+This function is used by `StreamPoller` to batch update all streamers after a poll cycle:
+
+```typescript
+const updatedStreamers: Streamer[] = [];
+
+for (const streamer of streamers) {
+  const status = await checkStreamer(streamer);
+  const updated = await processStatus(guildId, streamer, status);
+  updatedStreamers.push(updated);
+}
+
+// Save all changes at once
+updateStreamers(guildId, updatedStreamers);
+```
+
+---
+
+## Streamer ID Utilities
+
+### createStreamerId()
+
+Create a unique streamer ID from platform and username.
+
+```typescript
+const id = createStreamerId('twitch', 'xQc');
+console.log(id); // "twitch:xqc"
+```
+
+**Signature:**
+```typescript
+export function createStreamerId(platform: Platform, username: string): string
+```
+
+<ParamField path="platform" type="Platform" required>
+  Platform name
+</ParamField>
+
+<ParamField path="username" type="string" required>
+  Platform username (will be lowercased)
+</ParamField>
+
+<ResponseField name="return" type="string">
+  Streamer ID in format `platform:username` (username is lowercased)
+</ResponseField>
+
+**Example:**
+```typescript
+const id1 = createStreamerId('twitch', 'xQc');
+const id2 = createStreamerId('twitch', 'XQC');
+const id3 = createStreamerId('twitch', 'xqc');
+
+console.log(id1 === id2); // true
+console.log(id2 === id3); // true
+// All resolve to "twitch:xqc"
+```
+
+---
+
+### parseStreamerId()
+
+Parse a streamer ID into platform and username.
+
+```typescript
+const parsed = parseStreamerId('twitch:xqc');
+if (parsed) {
+  console.log(parsed.platform); // "twitch"
+  console.log(parsed.username); // "xqc"
+}
+```
+
+**Signature:**
+```typescript
+export function parseStreamerId(
+  id: string
+): { platform: Platform; username: string } | null
+```
+
+<ParamField path="id" type="string" required>
+  Streamer ID to parse
+</ParamField>
+
+<ResponseField name="return" type="{ platform: Platform; username: string } | null">
+  Object with platform and username, or `null` if invalid format
+</ResponseField>
+
+**Example:**
+```typescript
+const parsed = parseStreamerId('youtube:ludwig');
+
+if (parsed) {
+  const { platform, username } = parsed;
+  console.log(`Platform: ${platform}`);
+  console.log(`Username: ${username}`);
+  
+  // Use with platform checker
+  const checker = getChecker(platform);
+  const status = await checker(username);
+}
+
+// Invalid format returns null
+const invalid = parseStreamerId('invalid-id');
+console.log(invalid); // null
+```
+
+---
+
+## Data Persistence
+
+### File Storage
+
+Data is automatically persisted to `data/guilds.json` on every mutation:
+
+```json
+{
+  "123456789": {
+    "streamers": [
+      {
+        "id": "twitch:xqc",
+        "platform": "twitch",
+        "username": "xqc",
+        "channelId": "987654321",
+        "isLive": true,
+        "title": "VALORANT RANKED",
+        "viewers": 50000,
+        "followers": 2000000,
+        "lastLiveAt": "2026-03-01T12:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+### Loading
+
+Database is loaded automatically on module import:
+
+```typescript
+// Runs on import
+loadFromDisk();
+```
+
+### Saving
+
+Automatic save after every mutation:
+
+```typescript
+function saveToDisk(): void {
+  ensureDataDir();
+  
+  try {
+    const data = Object.fromEntries(cache);
+    writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (error) {
+    logger.error('Failed to save database:', error);
+  }
+}
+```
+
+---
+
+## Full Usage Example
+
+```typescript
+import {
+  addStreamer,
+  removeStreamer,
+  getStreamers,
+  updateStreamer,
+  createStreamerId,
+  getAllGuildsWithStreamers,
+  getTotalStreamerCount,
+} from './database/index.js';
+
+const guildId = '123456789';
+const channelId = '987654321';
+
+// Add streamers
+const twitchStreamer = {
+  id: createStreamerId('twitch', 'xqc'),
+  platform: 'twitch' as const,
+  username: 'xqc',
+  channelId,
+  isLive: false,
+};
+
+const kickStreamer = {
+  id: createStreamerId('kick', 'trainwreckstv'),
+  platform: 'kick' as const,
+  username: 'trainwreckstv',
+  channelId,
+  isLive: false,
+};
+
+addStreamer(guildId, twitchStreamer);
+addStreamer(guildId, kickStreamer);
+
+// List streamers
+const streamers = getStreamers(guildId);
+console.log(`Tracking ${streamers.length} streamers`);
+
+streamers.forEach(s => {
+  console.log(`  - ${s.username} on ${s.platform}`);
+});
+
+// Update a streamer
+const updated = updateStreamer(guildId, 'twitch:xqc', {
+  isLive: true,
+  title: 'VARIETY STREAM',
+  viewers: 60000,
+});
+
+if (updated) {
+  console.log('Updated xqc status');
+}
+
+// Get stats
+const total = getTotalStreamerCount();
+const guilds = getAllGuildsWithStreamers();
+
+console.log(`Total: ${total} streamers across ${guilds.length} guilds`);
+
+// Remove a streamer
+const removed = removeStreamer(guildId, 'kick:trainwreckstv');
+if (removed) {
+  console.log('Removed trainwreckstv from tracking');
+}
+```

@@ -1,0 +1,552 @@
+---
+title: 'Supported Platforms'
+description: 'Multi-platform streaming support with no API keys required'
+icon: 'tv'
+---
+
+The Streamer Alerts Bot supports **5 major streaming platforms** using public endpoints and HTML parsing - no API credentials needed.
+
+## Platform Overview
+
+<CardGroup cols={2}>
+  <Card title="Kick" icon="circle" color="#53FC18">
+    Fast-growing streaming platform with full live status support
+  </Card>
+  <Card title="Twitch" icon="circle" color="#9146FF">
+    Leading game streaming platform via GraphQL API
+  </Card>
+  <Card title="YouTube" icon="circle" color="#FF0000">
+    Live streams from YouTube channels
+  </Card>
+  <Card title="Rumble" icon="circle" color="#85C742">
+    Alternative platform with HTML scraping support
+  </Card>
+  <Card title="TikTok" icon="circle" color="#010101">
+    Live streams from TikTok creators
+  </Card>
+</CardGroup>
+
+## Platform Details
+
+<Tabs>
+  <Tab title="Kick">
+    ### 🟢 Kick
+
+    **Color:** `#53FC18` (Green) | **Emoji:** 🟢
+
+    **URL Format:** `https://kick.com/{username}`
+
+    #### How It Works
+
+    Kick uses the official public API endpoint:
+
+    ```typescript
+    const apiUrl = `https://kick.com/api/v2/channels/${username}`;
+    ```
+
+    #### Features Supported
+
+    <AccordionGroup>
+      <Accordion title="Live Stream Data">
+        - Live status detection via `livestream.is_live`
+        - Stream title from `session_title`
+        - Current viewer count
+        - Stream start time
+        - Stream language and mature content flags
+        - Stream tags array
+      </Accordion>
+
+      <Accordion title="Channel Information">
+        - Username and profile picture
+        - Follower count
+        - Verified badge status
+        - User bio (cleaned of HTML)
+        - Category/game information
+        - Category banner images
+      </Accordion>
+    </AccordionGroup>
+
+    #### Implementation Details
+
+    ```typescript
+    // From kick.ts:79-159
+    export async function checkKickLive(username: string): Promise<LiveStatus> {
+      const url = `https://kick.com/${username}`;
+      const apiUrl = `https://kick.com/api/v2/channels/${username}`;
+
+      const response = await fetch(apiUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          Accept: "application/json",
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.livestream?.is_live) {
+        return {
+          isLive: true,
+          platform: "kick",
+          username: data.user?.username,
+          title: data.livestream.session_title,
+          viewers: data.livestream.viewer_count,
+          followers: data.followers_count,
+          // ... more fields
+        };
+      }
+    }
+    ```
+
+    <Note>
+      **Note:** Kick stream thumbnails from `stream.kick.com` are private/blocked. The bot uses category banners instead for visual elements.
+    </Note>
+  </Tab>
+
+  <Tab title="Twitch">
+    ### 🟣 Twitch
+
+    **Color:** `#9146FF` (Purple) | **Emoji:** 🟣
+
+    **URL Format:** `https://twitch.tv/{username}`
+
+    #### How It Works
+
+    Twitch uses the public GraphQL API with an unauthenticated client ID:
+
+    ```typescript
+    const TWITCH_CLIENT_ID = "kimne78kx3ncx6brgo4mv6wki5h1ko";
+    const endpoint = "https://gql.twitch.tv/gql";
+    ```
+
+    #### GraphQL Query
+
+    ```graphql
+    query GetUserStream($login: String!) {
+      user(login: $login) {
+        id
+        login
+        displayName
+        description
+        profileImageURL(width: 300)
+        followers {
+          totalCount
+        }
+        roles {
+          isPartner
+          isAffiliate
+        }
+        stream {
+          id
+          title
+          type
+          viewersCount
+          createdAt
+          language
+          previewImageURL(width: 640, height: 360)
+          game {
+            displayName
+            boxArtURL(width: 144, height: 192)
+          }
+          tags {
+            localizedName
+          }
+        }
+      }
+    }
+    ```
+
+    #### Features Supported
+
+    <ParamField path="stream" type="object">
+      - **Live Detection:** `stream.type === "live"`
+      - **Stream Title:** Full title from GraphQL
+      - **Viewer Count:** Real-time viewers
+      - **Category/Game:** Current game being played with box art
+      - **Tags:** Stream tags array
+      - **Preview Image:** High-quality stream thumbnail (640x360)
+    </ParamField>
+
+    <ParamField path="user" type="object">
+      - **Partner Status:** Verified badge for partners
+      - **Follower Count:** Total followers
+      - **Profile Picture:** User avatar (300px)
+      - **Bio:** Channel description
+    </ParamField>
+
+    #### Implementation
+
+    ```typescript
+    // From twitch.ts:96-173
+    export async function checkTwitchLive(username: string): Promise<LiveStatus> {
+      const response = await fetch("https://gql.twitch.tv/gql", {
+        method: "POST",
+        headers: {
+          "Client-ID": TWITCH_CLIENT_ID,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: USER_STREAM_QUERY,
+          variables: { login: username.toLowerCase() },
+        }),
+      });
+
+      const data = await response.json();
+      const user = data.data?.user;
+
+      if (user.stream && user.stream.type === "live") {
+        return {
+          isLive: true,
+          platform: "twitch",
+          username: user.login,
+          verified: user.roles?.isPartner ?? false,
+          // ...
+        };
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="YouTube">
+    ### 🔴 YouTube
+
+    **Color:** `#FF0000` (Red) | **Emoji:** 🔴
+
+    **URL Format:** `https://youtube.com/@{username}`
+
+    #### How It Works
+
+    YouTube fetches the `/live` endpoint which redirects to the active stream:
+
+    ```typescript
+    const liveUrl = `https://www.youtube.com/@${username}/live`;
+    ```
+
+    The bot extracts `ytInitialData` JSON from the HTML response.
+
+    #### Features Supported
+
+    - **Live Detection:** `videoViewCountRenderer.isLive === true`
+    - **Stream Title:** From video primary info
+    - **Viewer Count:** Real-time concurrent viewers
+    - **Subscriber Count:** Channel subscribers (parsed from formatted text)
+    - **Stream Thumbnail:** High-quality thumbnail (`https://i.ytimg.com/vi/{videoId}/hqdefault.jpg`)
+    - **Profile Picture:** Channel avatar
+
+    #### Data Extraction
+
+    ```typescript
+    // From youtube.ts:43-164
+    export async function checkYouTubeLive(username: string): Promise<LiveStatus> {
+      const liveUrl = `https://www.youtube.com/@${username}/live`;
+      const response = await fetch(liveUrl);
+      const html = await response.text();
+
+      // Extract ytInitialData JSON
+      const dataMatch = html.match(/var ytInitialData = ({.*?});/s);
+      const data = JSON.parse(dataMatch[1]);
+
+      // Navigate to video info
+      const contents = data.contents?.twoColumnWatchNextResults?.results?.results?.contents;
+      const isLive = primaryInfo?.viewCount?.videoViewCountRenderer?.isLive === true;
+
+      if (isLive) {
+        return {
+          isLive: true,
+          platform: "youtube",
+          title: primaryInfo?.title?.runs?.[0]?.text,
+          viewers: parseInt(viewCountRenderer.originalViewCount, 10),
+          // ...
+        };
+      }
+    }
+    ```
+
+    <Note>
+      The `/live` endpoint automatically redirects to the active stream if the channel is live, making detection simple and reliable.
+    </Note>
+  </Tab>
+
+  <Tab title="Rumble">
+    ### 🟢 Rumble
+
+    **Color:** `#85C742` (Green) | **Emoji:** 🟢
+
+    **URL Format:** `https://rumble.com/c/{username}`
+
+    #### How It Works
+
+    Rumble uses HTML scraping with regex patterns:
+
+    ```typescript
+    const channelUrl = `https://rumble.com/c/${username}`;
+    const response = await fetch(channelUrl);
+    const html = await response.text();
+    ```
+
+    #### Detection Patterns
+
+    <CodeGroup>
+      ```typescript Live Status
+      const isLive =
+        html.includes("videostream__status--live") ||
+        html.includes("thumbnail__thumb--live");
+      ```
+
+      ```typescript Stream Title
+      const titleMatch = html.match(
+        /class=["']thumbnail__title[^"']*["'][^>]*>([^<]+)/
+      );
+      ```
+
+      ```typescript Viewer Count
+      const viewersMatch = html.match(
+        /videostream__views-ppv["'][^>]*>[\s\S]*?<span class=["']videostream__number["']>\s*(\d+)/
+      );
+      ```
+    </CodeGroup>
+
+    #### Features Supported
+
+    - Live status via CSS class detection
+    - Stream title and thumbnail
+    - Current viewer count
+    - Follower count
+    - Channel verification badge
+    - Profile image
+    - Stream URL extraction
+
+    #### Implementation
+
+    ```typescript
+    // From rumble.ts:8-108
+    export async function checkRumbleLive(username: string): Promise<LiveStatus> {
+      const response = await fetch(`https://rumble.com/c/${username}`);
+      const html = await response.text();
+
+      const isLive =
+        html.includes("videostream__status--live") ||
+        html.includes("thumbnail__thumb--live");
+
+      if (isLive) {
+        // Extract stream data via regex
+        const titleMatch = html.match(
+          /class=["']thumbnail__title[^"']*["'][^>]*>([^<]+)/
+        );
+        // ...
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="TikTok">
+    ### ⚫ TikTok
+
+    **Color:** `#010101` (Black) | **Emoji:** ⚫
+
+    **URL Format:** `https://tiktok.com/@{username}/live`
+
+    #### How It Works
+
+    TikTok embeds live data in `SIGI_STATE` JSON within the HTML:
+
+    ```typescript
+    const url = `https://www.tiktok.com/@${username}/live`;
+    const html = await response.text();
+
+    // Extract SIGI_STATE JSON from script tag
+    const stateMatch = html.match(
+      /<script[^>]*id=["']SIGI_STATE["'][^>]*>({.*?})<\/script>/s
+    );
+    const data = JSON.parse(stateMatch[1]);
+    ```
+
+    #### Live Status Detection
+
+    ```typescript
+    const liveRoom = data.LiveRoom?.liveRoomUserInfo;
+    const isLive = liveRoom?.liveRoom?.status === 2;
+    ```
+
+    <Note>
+      **Status Codes:** `status === 2` indicates the user is currently live streaming.
+    </Note>
+
+    #### Features Supported
+
+    <AccordionGroup>
+      <Accordion title="Live Stream Data">
+        - Live status (status === 2)
+        - Stream title
+        - Current viewer count (`liveRoomStats.userCount`)
+        - Stream start time (Unix timestamp)
+        - Stream cover/thumbnail (square format)
+      </Accordion>
+
+      <Accordion title="User Information">
+        - Username (`uniqueId`)
+        - Display name (`nickname`)
+        - Follower count
+        - Verification badge
+        - Avatar images (multiple sizes)
+        - User signature/bio
+      </Accordion>
+    </AccordionGroup>
+
+    #### Implementation
+
+    ```typescript
+    // From tiktok.ts:47-141
+    export async function checkTikTokLive(username: string): Promise<LiveStatus> {
+      const url = `https://www.tiktok.com/@${username}/live`;
+      const response = await fetch(url);
+      const html = await response.text();
+
+      const stateMatch = html.match(
+        /<script[^>]*id=["']SIGI_STATE["'][^>]*>({.*?})<\/script>/s
+      );
+      const data = JSON.parse(stateMatch[1]);
+      const liveRoom = data.LiveRoom?.liveRoomUserInfo;
+
+      const isLive = liveRoom?.liveRoom?.status === 2;
+
+      if (isLive) {
+        return {
+          isLive: true,
+          platform: "tiktok",
+          username: liveRoom.user?.uniqueId,
+          title: liveRoom.liveRoom?.title,
+          viewers: liveRoom.liveRoom?.liveRoomStats?.userCount,
+          // ...
+        };
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Platform Configuration
+
+All platform configurations are centralized in `constants.ts:6-40`:
+
+```typescript
+export const PLATFORMS: Record<
+  Platform,
+  { name: string; color: number; emoji: string; urlTemplate: string }
+> = {
+  kick: {
+    name: "Kick",
+    color: 0x53fc18, // Green
+    emoji: "🟢",
+    urlTemplate: "https://kick.com/{username}",
+  },
+  twitch: {
+    name: "Twitch",
+    color: 0x9146ff, // Purple
+    emoji: "🟣",
+    urlTemplate: "https://twitch.tv/{username}",
+  },
+  youtube: {
+    name: "YouTube",
+    color: 0xff0000, // Red
+    emoji: "🔴",
+    urlTemplate: "https://youtube.com/@{username}",
+  },
+  rumble: {
+    name: "Rumble",
+    color: 0x85c742, // Green
+    emoji: "🟢",
+    urlTemplate: "https://rumble.com/c/{username}",
+  },
+  tiktok: {
+    name: "TikTok",
+    color: 0x010101, // Black
+    emoji: "⚫",
+    urlTemplate: "https://tiktok.com/@{username}/live",
+  },
+};
+```
+
+## No API Keys Required
+
+<Check>
+  **Zero Configuration** - All platforms work out of the box without API credentials. The bot uses:
+  - Public APIs (Kick, Twitch GraphQL)
+  - HTML parsing (YouTube, Rumble, TikTok)
+  - Standard HTTP requests with User-Agent headers
+</Check>
+
+<Warning>
+  **Disclaimer:** These APIs are not owned or maintained by this project. Use at your own risk. Availability and functionality may change without notice.
+</Warning>
+
+## Error Handling
+
+Each platform checker includes robust error handling:
+
+```typescript
+try {
+  const response = await fetch(url);
+  if (!response.ok) {
+    if (response.status === 404) {
+      return baseResult; // User not found
+    }
+    throw new Error(`HTTP ${response.status}`);
+  }
+  // ... process data
+} catch (error) {
+  logger.error(`Error checking ${platform} live status for ${username}:`, error);
+  return { ...baseResult, error: String(error) };
+}
+```
+
+## Return Type
+
+All platform checkers return a `LiveStatus` object with the following structure:
+
+<ParamField path="isLive" type="boolean" required>
+  Whether the streamer is currently live
+</ParamField>
+
+<ParamField path="platform" type="string" required>
+  Platform identifier: `"kick"` | `"twitch"` | `"youtube"` | `"rumble"` | `"tiktok"`
+</ParamField>
+
+<ParamField path="username" type="string" required>
+  The streamer's username
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  Channel or stream URL
+</ParamField>
+
+<ParamField path="title" type="string">
+  Stream title (only when live)
+</ParamField>
+
+<ParamField path="viewers" type="number">
+  Current viewer count
+</ParamField>
+
+<ParamField path="followers" type="number">
+  Follower/subscriber count
+</ParamField>
+
+<ParamField path="thumbnail" type="string">
+  Stream preview image URL
+</ParamField>
+
+<ParamField path="profileImage" type="string">
+  User avatar URL
+</ParamField>
+
+<ParamField path="verified" type="boolean">
+  Verification/partner badge status
+</ParamField>
+
+<ParamField path="category" type="string">
+  Game/category name
+</ParamField>
+
+<ParamField path="tags" type="string[]">
+  Stream tags array
+</ParamField>

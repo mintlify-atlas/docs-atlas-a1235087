@@ -1,0 +1,689 @@
+---
+title: 'Alert System'
+description: 'Real-time streaming notifications with smart duplicate detection'
+icon: 'bell'
+---
+
+The Streamer Alerts Bot uses a **polling-based alert system** with intelligent caching to send beautiful, rich Discord embeds when streamers go live.
+
+## System Overview
+
+<Steps>
+  <Step title="Polling Loop">
+    Every 60 seconds, the bot checks all tracked streamers across all servers
+  </Step>
+  
+  <Step title="Status Check">
+    Each streamer's platform is queried via the appropriate checker function
+  </Step>
+  
+  <Step title="Duplicate Detection">
+    The bot compares the new status with cached data to prevent duplicate alerts
+  </Step>
+  
+  <Step title="Alert Dispatch">
+    If criteria are met, a rich embed with "Watch" button is sent to the configured channel
+  </Step>
+</Steps>
+
+## Polling Mechanism
+
+### Configuration
+
+```typescript
+// From constants.ts:50-52
+export const POLL_INTERVAL = 60 * 1000; // 60 seconds
+```
+
+### Stream Poller Service
+
+The `StreamPoller` class manages the polling loop:
+
+```typescript
+// From StreamPoller.ts:20-48
+export class StreamPoller {
+  private client: Client;
+  private intervalId: NodeJS.Timeout | null = null;
+  private isRunning = false;
+
+  constructor(client: Client) {
+    this.client = client;
+  }
+
+  start(): void {
+    if (this.isRunning) {
+      logger.warn("Stream poller is already running");
+      return;
+    }
+
+    this.isRunning = true;
+    logger.info(`Starting stream poller (interval: ${POLL_INTERVAL / 1000}s)`);
+
+    // Run immediately on start
+    this.poll();
+
+    // Then run on interval
+    this.intervalId = setInterval(() => {
+      this.poll();
+    }, POLL_INTERVAL);
+  }
+
+  stop(): void {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    this.isRunning = false;
+    logger.info("Stream poller stopped");
+  }
+}
+```
+
+### Poll Cycle Flow
+
+<CodeGroup>
+  ```typescript Poll Function
+  // From StreamPoller.ts:65-78
+  private async poll(): Promise<void> {
+    const guilds = getAllGuildsWithStreamers();
+
+    if (guilds.length === 0) {
+      logger.debug("No guilds with streamers to check");
+      return;
+    }
+
+    logger.debug(`Polling ${guilds.length} guilds`);
+
+    for (const { guildId, streamers } of guilds) {
+      await this.checkGuildStreamers(guildId, streamers);
+    }
+  }
+  ```
+
+  ```typescript Guild Check
+  // From StreamPoller.ts:83-102
+  private async checkGuildStreamers(
+    guildId: string,
+    streamers: Streamer[],
+  ): Promise<void> {
+    const updatedStreamers: Streamer[] = [];
+
+    for (const streamer of streamers) {
+      try {
+        const status = await this.checkStreamer(streamer);
+        const updated = await this.processStatus(guildId, streamer, status);
+        updatedStreamers.push(updated);
+      } catch (error) {
+        logger.error(`Error checking ${streamer.id}:`, error);
+        updatedStreamers.push(streamer);
+      }
+    }
+
+    // Save all updated streamers
+    updateStreamers(guildId, updatedStreamers);
+  }
+  ```
+
+  ```typescript Single Streamer Check
+  // From StreamPoller.ts:107-114
+  private async checkStreamer(streamer: Streamer): Promise<LiveStatus> {
+    const checker = getChecker(streamer.platform);
+    const status = await checker(streamer.username);
+
+    logger.platform(streamer.platform, streamer.username, status.isLive);
+
+    return status;
+  }
+  ```
+</CodeGroup>
+
+## Duplicate Detection
+
+The bot uses a **smart caching system** to prevent duplicate alerts:
+
+### Alert Logic
+
+```typescript
+// From StreamPoller.ts:119-141
+private async processStatus(
+  guildId: string,
+  streamer: Streamer,
+  status: LiveStatus,
+): Promise<Streamer> {
+  const cacheKey = `${guildId}-${streamer.id}`;
+  const lastData = lastLiveData.get(cacheKey);
+
+  // Determine if we should send an alert
+  // Alert if: now live AND (wasn't live before OR title changed)
+  const shouldAlert =
+    status.isLive &&
+    (!lastData?.isLive || (status.title && lastData.title !== status.title));
+
+  if (shouldAlert) {
+    await sendLiveAlert(this.client, streamer.channelId, status);
+
+    // Update cache
+    lastLiveData.set(cacheKey, {
+      title: status.title,
+      isLive: true,
+    });
+  }
+
+  // Clean up cache if went offline
+  if (!status.isLive && lastData?.isLive) {
+    lastLiveData.delete(cacheKey);
+  }
+
+  return updatedStreamer;
+}
+```
+
+### Alert Criteria
+
+An alert is sent when **ALL** of the following are true:
+
+<AccordionGroup>
+  <Accordion title="Current Status is Live">
+    ```typescript
+    status.isLive === true
+    ```
+    The streamer must currently be live.
+  </Accordion>
+
+  <Accordion title="Previous Status was Offline OR Title Changed">
+    ```typescript
+    !lastData?.isLive || (status.title && lastData.title !== status.title)
+    ```
+    
+    Either:
+    - The streamer was offline in the previous check
+    - OR the stream title has changed (indicates a new stream)
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  **Why check title changes?** Some streamers keep their stream "live" 24/7 with offline screens. Title changes indicate actual new content.
+</Note>
+
+### Cache Structure
+
+```typescript
+// From StreamPoller.ts:14-15
+const lastLiveData = new Map<string, { title?: string; isLive: boolean }>();
+
+// Cache key format: "guildId-platform:username"
+const cacheKey = `${guildId}-${streamer.id}`;
+
+// Example: "123456789-twitch:xqc"
+```
+
+## Alert Service
+
+The `AlertService` handles sending alerts to Discord channels:
+
+```typescript
+// From AlertService.ts:10-39
+export async function sendLiveAlert(
+  client: Client,
+  channelId: string,
+  status: LiveStatus,
+): Promise<boolean> {
+  try {
+    const channel = await client.channels.fetch(channelId);
+
+    if (!channel || !channel.isTextBased()) {
+      logger.warn(`Channel ${channelId} not found or not text-based`);
+      return false;
+    }
+
+    const embed = createLiveEmbed(status);
+    const row = createWatchButtonRow(status.url, status.platform);
+
+    await (channel as TextChannel).send({
+      embeds: [embed],
+      components: [row],
+    });
+
+    logger.info(
+      `Sent live alert for ${status.username} (${status.platform}) to channel ${channelId}`,
+    );
+    return true;
+  } catch (error) {
+    logger.error(`Failed to send alert to channel ${channelId}:`, error);
+    return false;
+  }
+}
+```
+
+## Alert Embed Structure
+
+The live alert embed is rich and platform-specific:
+
+### Embed Components
+
+<Tabs>
+  <Tab title="Author Section">
+    Shows streamer info with profile picture:
+    
+    ```typescript
+    const verifiedBadge = status.verified ? " ✓" : "";
+    embed.setAuthor({
+      name: `${status.username}${verifiedBadge} is LIVE`,
+      iconURL: status.profileImage,
+      url: status.url,
+    });
+    ```
+  </Tab>
+
+  <Tab title="Title">
+    Stream title (truncated to 256 chars):
+    
+    ```typescript
+    if (status.title) {
+      embed.setTitle(truncate(status.title, 256));
+    }
+    ```
+  </Tab>
+
+  <Tab title="Description">
+    Key stream information:
+    
+    ```typescript
+    const descParts: string[] = [];
+
+    if (status.category) {
+      descParts.push(`**Playing:** ${status.category}`);
+    }
+
+    if (status.viewers !== undefined) {
+      descParts.push(`**Viewers:** ${formatNumber(status.viewers)}`);
+    }
+
+    if (status.followers !== undefined) {
+      const label = status.platform === "youtube" ? "Subscribers" : "Followers";
+      descParts.push(`**${label}:** ${formatNumber(status.followers)}`);
+    }
+
+    if (descParts.length > 0) {
+      embed.setDescription(descParts.join(" • "));
+    }
+    ```
+  </Tab>
+
+  <Tab title="Fields">
+    Additional metadata:
+    
+    ```typescript
+    // Started timestamp
+    if (status.startedAt) {
+      fields.push({
+        name: "Started",
+        value: discordTimestamp(status.startedAt, "R"), // Relative time
+        inline: true,
+      });
+    }
+
+    // Language
+    if (status.language) {
+      fields.push({
+        name: "Language",
+        value: status.language.toUpperCase(),
+        inline: true,
+      });
+    }
+
+    // Mature content
+    if (status.isMature) {
+      fields.push({
+        name: "Mature",
+        value: "18+",
+        inline: true,
+      });
+    }
+
+    // Tags
+    if (status.tags && status.tags.length > 0) {
+      const displayTags = status.tags
+        .slice(0, 6)
+        .map((t) => `\`${t}\``)
+        .join(" ");
+      fields.push({
+        name: "Tags",
+        value: displayTags,
+        inline: false,
+      });
+    }
+    ```
+  </Tab>
+
+  <Tab title="Images">
+    Visual elements:
+    
+    ```typescript
+    // Stream preview as main image
+    if (status.thumbnail) {
+      embed.setImage(status.thumbnail);
+    }
+
+    // Category icon as thumbnail (small, on the right)
+    if (status.categoryIcon) {
+      embed.setThumbnail(status.categoryIcon);
+    } else if (status.profileImage && !status.thumbnail) {
+      embed.setThumbnail(status.profileImage);
+    }
+    ```
+  </Tab>
+
+  <Tab title="Footer & Color">
+    Platform branding:
+    
+    ```typescript
+    const platform = PLATFORMS[status.platform];
+
+    embed
+      .setColor(platform.color)
+      .setFooter({
+        text: platform.name,
+        iconURL: FOOTER.iconURL,
+      })
+      .setTimestamp();
+    ```
+  </Tab>
+</Tabs>
+
+### Full Embed Implementation
+
+```typescript
+// From embeds.ts:18-123
+export function createLiveEmbed(status: LiveStatus): EmbedBuilder {
+  const platform = PLATFORMS[status.platform];
+
+  const embed = new EmbedBuilder()
+    .setColor(platform.color)
+    .setURL(status.url)
+    .setTimestamp();
+
+  // Author section - streamer info with profile pic
+  const verifiedBadge = status.verified ? " ✓" : "";
+  embed.setAuthor({
+    name: `${status.username}${verifiedBadge} is LIVE`,
+    iconURL: status.profileImage,
+    url: status.url,
+  });
+
+  // Title - stream title
+  if (status.title) {
+    embed.setTitle(truncate(status.title, 256));
+  }
+
+  // Build description with key info
+  const descParts: string[] = [];
+
+  if (status.category) {
+    descParts.push(`**Playing:** ${status.category}`);
+  }
+
+  if (status.viewers !== undefined) {
+    descParts.push(`**Viewers:** ${formatNumber(status.viewers)}`);
+  }
+
+  if (status.followers !== undefined) {
+    const label = status.platform === "youtube" ? "Subscribers" : "Followers";
+    descParts.push(`**${label}:** ${formatNumber(status.followers)}`);
+  }
+
+  if (descParts.length > 0) {
+    embed.setDescription(descParts.join(" • "));
+  }
+
+  // Fields for additional data
+  const fields: Array<{ name: string; value: string; inline: boolean }> = [];
+
+  // Row 1: Started, Language, Mature
+  if (status.startedAt) {
+    fields.push({
+      name: "Started",
+      value: discordTimestamp(status.startedAt, "R"),
+      inline: true,
+    });
+  }
+
+  if (status.language) {
+    fields.push({
+      name: "Language",
+      value: status.language.toUpperCase(),
+      inline: true,
+    });
+  }
+
+  if (status.isMature) {
+    fields.push({
+      name: "Mature",
+      value: "18+",
+      inline: true,
+    });
+  }
+
+  // Tags row
+  if (status.tags && status.tags.length > 0) {
+    const displayTags = status.tags
+      .slice(0, 6)
+      .map((t) => `\`${t}\``)
+      .join(" ");
+    fields.push({
+      name: "Tags",
+      value: displayTags,
+      inline: false,
+    });
+  }
+
+  if (fields.length > 0) {
+    embed.addFields(fields);
+  }
+
+  // Stream preview as main image
+  if (status.thumbnail) {
+    embed.setImage(status.thumbnail);
+  }
+
+  // Category icon as thumbnail (small, on the right)
+  if (status.categoryIcon) {
+    embed.setThumbnail(status.categoryIcon);
+  } else if (status.profileImage && !status.thumbnail) {
+    embed.setThumbnail(status.profileImage);
+  }
+
+  // Footer with platform name
+  embed.setFooter({
+    text: platform.name,
+    iconURL: FOOTER.iconURL,
+  });
+
+  return embed;
+}
+```
+
+## Watch Button
+
+Every alert includes a clickable button to watch the stream:
+
+```typescript
+export function createWatchButtonRow(
+  url: string,
+  platform: Platform,
+): ActionRowBuilder<ButtonBuilder> {
+  const platformConfig = PLATFORMS[platform];
+
+  const button = new ButtonBuilder()
+    .setLabel(`Watch on ${platformConfig.name}`)
+    .setStyle(ButtonStyle.Link)
+    .setURL(url)
+    .setEmoji(platformConfig.emoji);
+
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(button);
+}
+```
+
+## Startup Sequence
+
+The polling system starts automatically when the bot is ready:
+
+```typescript
+// From ready.ts:8-20
+export function handleReady(client: StreamerBot): void {
+  logger.info(`Logged in as ${client.user?.tag}`);
+  logger.info(`Serving ${client.guilds.cache.size} guilds`);
+
+  // Start activity rotation
+  client.startActivityRotation();
+
+  // Start stream polling
+  const poller = createStreamPoller(client);
+  poller.start();
+
+  logger.info("Bot is ready!");
+}
+```
+
+## Data Persistence
+
+After each poll cycle, updated streamer data is saved:
+
+```typescript
+// From StreamPoller.ts:149-163
+return {
+  ...streamer,
+  isLive: status.isLive,
+  lastLiveAt: status.isLive
+    ? new Date().toISOString()
+    : streamer.lastLiveAt,
+  title: status.title ?? streamer.title,
+  viewers: status.viewers ?? streamer.viewers,
+  followers: status.followers ?? streamer.followers,
+  thumbnail: status.thumbnail ?? streamer.thumbnail,
+  profileImage: status.profileImage ?? streamer.profileImage,
+  startedAt: status.startedAt ?? streamer.startedAt,
+  verified: status.verified ?? streamer.verified,
+  bio: status.bio ?? streamer.bio,
+};
+```
+
+This data is persisted to the Enmap database automatically.
+
+## Error Handling
+
+The polling system includes comprehensive error handling:
+
+```typescript
+for (const streamer of streamers) {
+  try {
+    const status = await this.checkStreamer(streamer);
+    const updated = await this.processStatus(guildId, streamer, status);
+    updatedStreamers.push(updated);
+  } catch (error) {
+    logger.error(`Error checking ${streamer.id}:`, error);
+    // Keep the old streamer data on error
+    updatedStreamers.push(streamer);
+  }
+}
+```
+
+If a platform check fails:
+1. Error is logged
+2. Previous streamer data is retained
+3. Polling continues for other streamers
+
+## Performance Considerations
+
+<AccordionGroup>
+  <Accordion title="60-Second Interval">
+    ```typescript
+    export const POLL_INTERVAL = 60 * 1000; // 60 seconds
+    ```
+    
+    Balances:
+    - **Timeliness:** Alerts within 1 minute of going live
+    - **Rate limits:** Avoids overwhelming platform APIs
+    - **Resource usage:** Reasonable CPU/network load
+  </Accordion>
+
+  <Accordion title="Sequential Processing">
+    Streamers are checked sequentially (not in parallel) to:
+    - Avoid rate limiting
+    - Prevent memory spikes
+    - Ensure stable operation
+  </Accordion>
+
+  <Accordion title="Memory-Efficient Caching">
+    ```typescript
+    const lastLiveData = new Map<string, { title?: string; isLive: boolean }>();
+    ```
+    
+    - Only stores minimal data (title + live status)
+    - Automatically cleaned when streamers go offline
+    - Scales with active streams, not total tracked streamers
+  </Accordion>
+</AccordionGroup>
+
+## Logging
+
+Comprehensive logging tracks all polling activity:
+
+```typescript
+logger.info(`Starting stream poller (interval: ${POLL_INTERVAL / 1000}s)`);
+logger.debug(`Polling ${guilds.length} guilds`);
+logger.platform(streamer.platform, streamer.username, status.isLive);
+logger.info(`Sent live alert for ${status.username} (${status.platform})`);
+logger.error(`Error checking ${streamer.id}:`, error);
+```
+
+Log levels:
+- **info:** Major events (startup, alerts sent)
+- **debug:** Detailed polling info
+- **error:** Failures and exceptions
+
+## Example Alert Flow
+
+<Steps>
+  <Step title="Poll Begins">
+    ```
+    [DEBUG] Polling 5 guilds
+    ```
+  </Step>
+  
+  <Step title="Check Streamer">
+    ```
+    [PLATFORM] twitch:xqc - LIVE
+    ```
+  </Step>
+  
+  <Step title="Compare with Cache">
+    ```typescript
+    cacheKey = "123456789-twitch:xqc"
+    lastData = { title: "Old Stream", isLive: true }
+    newStatus = { title: "New Stream", isLive: true }
+    
+    shouldAlert = true // Title changed!
+    ```
+  </Step>
+  
+  <Step title="Send Alert">
+    ```
+    [INFO] Sent live alert for xqc (twitch) to channel 987654321
+    ```
+    
+    Discord receives:
+    - Rich embed with stream info
+    - Preview thumbnail
+    - "Watch on Twitch" button
+  </Step>
+  
+  <Step title="Update Cache">
+    ```typescript
+    lastLiveData.set("123456789-twitch:xqc", {
+      title: "New Stream",
+      isLive: true,
+    });
+    ```
+  </Step>
+</Steps>

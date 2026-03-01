@@ -1,0 +1,483 @@
+---
+title: 'Services'
+description: 'StreamPoller and AlertService for monitoring streams and sending notifications'
+---
+
+## StreamPoller
+
+Service that periodically checks all tracked streamers for live status changes and triggers alerts.
+
+```typescript
+import { StreamPoller, createStreamPoller } from './services/StreamPoller.js';
+import { Client } from 'discord.js';
+
+const client = new Client({ /* ... */ });
+const poller = new StreamPoller(client);
+```
+
+### Constructor
+
+Creates a new StreamPoller instance.
+
+```typescript
+const poller = new StreamPoller(client);
+```
+
+**Signature:**
+```typescript
+constructor(client: Client)
+```
+
+<ParamField path="client" type="Client" required>
+  Discord.js Client instance for fetching channels and sending alerts.
+</ParamField>
+
+### Methods
+
+#### start()
+
+Starts the polling loop to check streamers at regular intervals.
+
+```typescript
+poller.start();
+```
+
+**Signature:**
+```typescript
+start(): void
+```
+
+**Behavior:**
+- Runs an immediate poll on start
+- Sets up interval polling (default: 60 seconds from `POLL_INTERVAL`)
+- Logs start message to console
+- Prevents duplicate polling if already running
+
+**Example:**
+```typescript
+import { createStreamPoller } from './services/StreamPoller.js';
+import { POLL_INTERVAL } from './utils/constants.js';
+
+const poller = createStreamPoller(client);
+poller.start();
+
+console.log(`Polling every ${POLL_INTERVAL / 1000} seconds`);
+```
+
+---
+
+#### stop()
+
+Stops the polling loop.
+
+```typescript
+poller.stop();
+```
+
+**Signature:**
+```typescript
+stop(): void
+```
+
+**Behavior:**
+- Clears the polling interval
+- Sets running state to false
+- Logs stop message to console
+
+**Example:**
+```typescript
+// Stop polling on shutdown
+process.on('SIGINT', () => {
+  poller.stop();
+  process.exit(0);
+});
+```
+
+---
+
+### Internal Methods
+
+#### poll() (private)
+
+Runs a single poll cycle for all guilds with tracked streamers.
+
+**Process:**
+1. Fetches all guilds with streamers from database
+2. Iterates through each guild
+3. Checks each streamer's live status
+4. Processes status changes and sends alerts
+5. Updates streamer data in database
+
+**Example flow:**
+```typescript
+const guilds = getAllGuildsWithStreamers();
+// Returns: [{ guildId: '123', streamers: [...] }, ...]
+
+for (const { guildId, streamers } of guilds) {
+  await this.checkGuildStreamers(guildId, streamers);
+}
+```
+
+---
+
+#### checkGuildStreamers() (private)
+
+Checks all streamers for a specific guild.
+
+**Signature:**
+```typescript
+private async checkGuildStreamers(
+  guildId: string,
+  streamers: Streamer[]
+): Promise<void>
+```
+
+<ParamField path="guildId" type="string" required>
+  Discord guild ID
+</ParamField>
+
+<ParamField path="streamers" type="Streamer[]" required>
+  Array of streamers to check
+</ParamField>
+
+**Process:**
+```typescript
+const updatedStreamers: Streamer[] = [];
+
+for (const streamer of streamers) {
+  const status = await this.checkStreamer(streamer);
+  const updated = await this.processStatus(guildId, streamer, status);
+  updatedStreamers.push(updated);
+}
+
+updateStreamers(guildId, updatedStreamers);
+```
+
+---
+
+#### checkStreamer() (private)
+
+Checks a single streamer's live status using the appropriate platform checker.
+
+**Signature:**
+```typescript
+private async checkStreamer(streamer: Streamer): Promise<LiveStatus>
+```
+
+<ParamField path="streamer" type="Streamer" required>
+  Streamer object from database
+</ParamField>
+
+**Returns:** `LiveStatus` object from platform checker
+
+**Example:**
+```typescript
+const checker = getChecker(streamer.platform);
+const status = await checker(streamer.username);
+
+logger.platform(streamer.platform, streamer.username, status.isLive);
+return status;
+```
+
+---
+
+#### processStatus() (private)
+
+Processes a status update, sends alerts if needed, and returns updated streamer data.
+
+**Signature:**
+```typescript
+private async processStatus(
+  guildId: string,
+  streamer: Streamer,
+  status: LiveStatus
+): Promise<Streamer>
+```
+
+<ParamField path="guildId" type="string" required>
+  Discord guild ID
+</ParamField>
+
+<ParamField path="streamer" type="Streamer" required>
+  Current streamer data
+</ParamField>
+
+<ParamField path="status" type="LiveStatus" required>
+  New live status from platform check
+</ParamField>
+
+<ResponseField name="return" type="Streamer">
+  Updated streamer object with new live data
+</ResponseField>
+
+**Alert Logic:**
+```typescript
+const cacheKey = `${guildId}-${streamer.id}`;
+const lastData = lastLiveData.get(cacheKey);
+
+// Send alert if:
+// - Now live AND (wasn't live before OR title changed)
+const shouldAlert =
+  status.isLive &&
+  (!lastData?.isLive || (status.title && lastData.title !== status.title));
+
+if (shouldAlert) {
+  await sendLiveAlert(this.client, streamer.channelId, status);
+  lastLiveData.set(cacheKey, { title: status.title, isLive: true });
+}
+```
+
+**Cache Cleanup:**
+```typescript
+// Clean up cache when stream ends
+if (!status.isLive && lastData?.isLive) {
+  lastLiveData.delete(cacheKey);
+}
+```
+
+**Data Merging:**
+```typescript
+return {
+  ...streamer,
+  isLive: status.isLive,
+  lastLiveAt: status.isLive ? new Date().toISOString() : streamer.lastLiveAt,
+  title: status.title ?? streamer.title,
+  viewers: status.viewers ?? streamer.viewers,
+  followers: status.followers ?? streamer.followers,
+  thumbnail: status.thumbnail ?? streamer.thumbnail,
+  profileImage: status.profileImage ?? streamer.profileImage,
+  startedAt: status.startedAt ?? streamer.startedAt,
+  verified: status.verified ?? streamer.verified,
+  bio: status.bio ?? streamer.bio,
+};
+```
+
+---
+
+## createStreamPoller()
+
+Factory function to create a StreamPoller instance.
+
+```typescript
+import { createStreamPoller } from './services/StreamPoller.js';
+
+const poller = createStreamPoller(client);
+```
+
+**Signature:**
+```typescript
+export function createStreamPoller(client: Client): StreamPoller
+```
+
+<ParamField path="client" type="Client" required>
+  Discord.js Client instance
+</ParamField>
+
+<ResponseField name="return" type="StreamPoller">
+  New StreamPoller instance
+</ResponseField>
+
+---
+
+## AlertService
+
+Service class for sending live stream notifications to Discord channels.
+
+```typescript
+import { AlertService } from './services/AlertService.js';
+
+const alertService = new AlertService(client);
+```
+
+### Constructor
+
+```typescript
+const service = new AlertService(client);
+```
+
+**Signature:**
+```typescript
+constructor(client: Client)
+```
+
+<ParamField path="client" type="Client" required>
+  Discord.js Client instance
+</ParamField>
+
+### Methods
+
+#### sendAlert()
+
+Sends a live alert to a Discord channel.
+
+```typescript
+const success = await alertService.sendAlert(channelId, status);
+```
+
+**Signature:**
+```typescript
+async sendAlert(channelId: string, status: LiveStatus): Promise<boolean>
+```
+
+<ParamField path="channelId" type="string" required>
+  Discord channel ID where the alert will be sent
+</ParamField>
+
+<ParamField path="status" type="LiveStatus" required>
+  Live status object containing stream information
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  `true` if alert was sent successfully, `false` otherwise
+</ResponseField>
+
+**Example:**
+```typescript
+import { AlertService } from './services/AlertService.js';
+import { checkTwitchLive } from './platforms/twitch.js';
+
+const service = new AlertService(client);
+const status = await checkTwitchLive('xqc');
+
+if (status.isLive) {
+  const sent = await service.sendAlert('123456789', status);
+  console.log(`Alert sent: ${sent}`);
+}
+```
+
+---
+
+## sendLiveAlert()
+
+Standalone function to send a live alert.
+
+```typescript
+import { sendLiveAlert } from './services/AlertService.js';
+
+const success = await sendLiveAlert(client, channelId, status);
+```
+
+**Signature:**
+```typescript
+export async function sendLiveAlert(
+  client: Client,
+  channelId: string,
+  status: LiveStatus
+): Promise<boolean>
+```
+
+<ParamField path="client" type="Client" required>
+  Discord.js Client instance
+</ParamField>
+
+<ParamField path="channelId" type="string" required>
+  Discord channel ID
+</ParamField>
+
+<ParamField path="status" type="LiveStatus" required>
+  Live status object
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  `true` if successful, `false` if failed
+</ResponseField>
+
+**Process:**
+1. Fetches the Discord channel
+2. Validates channel exists and is text-based
+3. Creates live embed with stream info
+4. Creates "Watch Now" button
+5. Sends message with embed and button
+6. Logs success/failure
+
+**Implementation:**
+```typescript
+try {
+  const channel = await client.channels.fetch(channelId);
+
+  if (!channel || !channel.isTextBased()) {
+    logger.warn(`Channel ${channelId} not found or not text-based`);
+    return false;
+  }
+
+  const embed = createLiveEmbed(status);
+  const row = createWatchButtonRow(status.url, status.platform);
+
+  await (channel as TextChannel).send({
+    embeds: [embed],
+    components: [row],
+  });
+
+  logger.info(
+    `Sent live alert for ${status.username} (${status.platform}) to channel ${channelId}`
+  );
+  return true;
+} catch (error) {
+  logger.error(`Failed to send alert to channel ${channelId}:`, error);
+  return false;
+}
+```
+
+---
+
+## Full Usage Example
+
+```typescript
+import { Client, GatewayIntentBits } from 'discord.js';
+import { createStreamPoller } from './services/StreamPoller.js';
+import { AlertService } from './services/AlertService.js';
+import { addStreamer, createStreamerId } from './database/index.js';
+import { TOKEN } from './config.js';
+
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+});
+
+// Create services
+const poller = createStreamPoller(client);
+const alerts = new AlertService(client);
+
+client.once('ready', () => {
+  console.log(`Logged in as ${client.user?.tag}`);
+  
+  // Add a streamer to track
+  const streamer = {
+    id: createStreamerId('twitch', 'xqc'),
+    platform: 'twitch' as const,
+    username: 'xqc',
+    channelId: '123456789', // Discord channel ID
+    isLive: false,
+  };
+  
+  addStreamer('guild_123', streamer);
+  
+  // Start polling
+  poller.start();
+  console.log('Stream poller started');
+});
+
+// Manual alert example
+client.on('messageCreate', async (message) => {
+  if (message.content === '!test-alert') {
+    const testStatus = {
+      isLive: true,
+      platform: 'twitch' as const,
+      username: 'xqc',
+      title: 'TEST STREAM',
+      viewers: 50000,
+      url: 'https://twitch.tv/xqc',
+    };
+    
+    await alerts.sendAlert(message.channel.id, testStatus);
+  }
+});
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+  console.log('Stopping poller...');
+  poller.stop();
+  process.exit(0);
+});
+
+await client.login(TOKEN);
+```

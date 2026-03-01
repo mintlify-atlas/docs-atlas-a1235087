@@ -1,0 +1,635 @@
+---
+title: 'Types'
+description: 'TypeScript type definitions and interfaces for the Streamer Alerts Bot'
+---
+
+## Core Types
+
+### Platform
+
+Supported streaming platforms.
+
+```typescript
+type Platform = "kick" | "twitch" | "youtube" | "rumble" | "tiktok";
+```
+
+**Usage:**
+```typescript
+import type { Platform } from './types/streamer.js';
+
+const platform: Platform = 'twitch';
+```
+
+---
+
+## Streamer Data
+
+### Streamer
+
+Streamer data stored in the database.
+
+```typescript
+interface Streamer {
+  id: string;
+  platform: Platform;
+  username: string;
+  displayName?: string;
+  channelId: string;
+  isLive: boolean;
+  lastLiveAt?: string;
+  title?: string;
+  viewers?: number;
+  followers?: number;
+  thumbnail?: string;
+  profileImage?: string;
+  startedAt?: string;
+  verified?: boolean;
+  bio?: string;
+}
+```
+
+<ResponseField name="Streamer" type="object">
+  Complete streamer object with all tracking data.
+  
+  <Expandable title="Properties">
+    <ResponseField name="id" type="string" required>
+      Unique identifier in format `platform:username` (e.g., `"twitch:xqc"`)
+    </ResponseField>
+    
+    <ResponseField name="platform" type="Platform" required>
+      Streaming platform: `"kick"`, `"twitch"`, `"youtube"`, `"rumble"`, or `"tiktok"`
+    </ResponseField>
+    
+    <ResponseField name="username" type="string" required>
+      Platform username/handle (lowercase)
+    </ResponseField>
+    
+    <ResponseField name="displayName" type="string">
+      Display name if different from username
+    </ResponseField>
+    
+    <ResponseField name="channelId" type="string" required>
+      Discord channel ID where alerts are sent
+    </ResponseField>
+    
+    <ResponseField name="isLive" type="boolean" required>
+      Current live status
+    </ResponseField>
+    
+    <ResponseField name="lastLiveAt" type="string">
+      ISO timestamp of last detected live session
+    </ResponseField>
+    
+    <ResponseField name="title" type="string">
+      Current or last stream title
+    </ResponseField>
+    
+    <ResponseField name="viewers" type="number">
+      Current viewer count (when live)
+    </ResponseField>
+    
+    <ResponseField name="followers" type="number">
+      Follower/subscriber count
+    </ResponseField>
+    
+    <ResponseField name="thumbnail" type="string">
+      Stream thumbnail URL
+    </ResponseField>
+    
+    <ResponseField name="profileImage" type="string">
+      Profile picture URL
+    </ResponseField>
+    
+    <ResponseField name="startedAt" type="string">
+      ISO timestamp when current stream started
+    </ResponseField>
+    
+    <ResponseField name="verified" type="boolean">
+      Whether streamer is verified on platform
+    </ResponseField>
+    
+    <ResponseField name="bio" type="string">
+      Bio/description text
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example:**
+```typescript
+import type { Streamer } from './types/streamer.js';
+
+const streamer: Streamer = {
+  id: 'twitch:xqc',
+  platform: 'twitch',
+  username: 'xqc',
+  displayName: 'xQc',
+  channelId: '123456789',
+  isLive: true,
+  lastLiveAt: '2026-03-01T12:00:00.000Z',
+  title: 'VALORANT RANKED',
+  viewers: 50000,
+  followers: 2000000,
+  profileImage: 'https://static-cdn.jtvnw.net/...',
+  thumbnail: 'https://static-cdn.jtvnw.net/...',
+  startedAt: '2026-03-01T10:30:00.000Z',
+  verified: true,
+  bio: 'Variety streamer',
+};
+```
+
+---
+
+### LiveStatus
+
+Live status returned by platform checkers.
+
+```typescript
+interface LiveStatus {
+  isLive: boolean;
+  platform: Platform;
+  username: string;
+  title?: string;
+  viewers?: number;
+  followers?: number;
+  thumbnail?: string;
+  profileImage?: string;
+  startedAt?: string;
+  url: string;
+  verified?: boolean;
+  bio?: string;
+  category?: string;
+  categoryIcon?: string;
+  tags?: string[];
+  language?: string;
+  isMature?: boolean;
+  error?: string;
+}
+```
+
+<ResponseField name="LiveStatus" type="object">
+  Live status response from platform checkers.
+  
+  <Expandable title="Properties">
+    <ResponseField name="isLive" type="boolean" required>
+      Whether the streamer is currently live
+    </ResponseField>
+    
+    <ResponseField name="platform" type="Platform" required>
+      Platform name
+    </ResponseField>
+    
+    <ResponseField name="username" type="string" required>
+      Username checked (may differ from input if platform returns canonical name)
+    </ResponseField>
+    
+    <ResponseField name="url" type="string" required>
+      Direct URL to the stream or channel
+    </ResponseField>
+    
+    <ResponseField name="title" type="string">
+      Stream title (only when live)
+    </ResponseField>
+    
+    <ResponseField name="viewers" type="number">
+      Current viewer count (only when live)
+    </ResponseField>
+    
+    <ResponseField name="followers" type="number">
+      Follower/subscriber count
+    </ResponseField>
+    
+    <ResponseField name="thumbnail" type="string">
+      Stream thumbnail/preview image URL
+    </ResponseField>
+    
+    <ResponseField name="profileImage" type="string">
+      Profile picture URL
+    </ResponseField>
+    
+    <ResponseField name="startedAt" type="string">
+      ISO timestamp when stream started
+    </ResponseField>
+    
+    <ResponseField name="verified" type="boolean">
+      Verification status on platform
+    </ResponseField>
+    
+    <ResponseField name="bio" type="string">
+      Bio/description text
+    </ResponseField>
+    
+    <ResponseField name="category" type="string">
+      Game/category name (Twitch, Kick)
+    </ResponseField>
+    
+    <ResponseField name="categoryIcon" type="string">
+      Category icon/box art URL
+    </ResponseField>
+    
+    <ResponseField name="tags" type="string[]">
+      Stream tags (Twitch, Kick)
+    </ResponseField>
+    
+    <ResponseField name="language" type="string">
+      Stream language code (Twitch, Kick)
+    </ResponseField>
+    
+    <ResponseField name="isMature" type="boolean">
+      Whether stream is marked as mature content (Kick)
+    </ResponseField>
+    
+    <ResponseField name="error" type="string">
+      Error message if check failed
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example:**
+```typescript
+import type { LiveStatus } from './types/streamer.js';
+import { checkTwitchLive } from './platforms/twitch.js';
+
+const status: LiveStatus = await checkTwitchLive('xqc');
+
+if (status.isLive) {
+  console.log(`${status.username} is live!`);
+  console.log(`Title: ${status.title}`);
+  console.log(`Viewers: ${status.viewers}`);
+  console.log(`Game: ${status.category}`);
+  console.log(`URL: ${status.url}`);
+}
+```
+
+---
+
+### GuildSettings
+
+Guild settings stored in the database.
+
+```typescript
+interface GuildSettings {
+  streamers: Streamer[];
+}
+```
+
+<ResponseField name="GuildSettings" type="object">
+  Settings for a Discord guild.
+  
+  <Expandable title="Properties">
+    <ResponseField name="streamers" type="Streamer[]" required>
+      Array of tracked streamers for this guild
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example:**
+```typescript
+import type { GuildSettings } from './types/streamer.js';
+import { getGuildSettings } from './database/index.js';
+
+const settings: GuildSettings = getGuildSettings('123456789');
+
+console.log(`Tracking ${settings.streamers.length} streamers`);
+settings.streamers.forEach(s => {
+  console.log(`  - ${s.username} on ${s.platform}`);
+});
+```
+
+---
+
+## Platform Configuration
+
+### PlatformChecker
+
+Function signature for platform live status checkers.
+
+```typescript
+type PlatformChecker = (username: string) => Promise<LiveStatus>;
+```
+
+**Example:**
+```typescript
+import type { PlatformChecker } from './types/streamer.js';
+import { checkKickLive } from './platforms/kick.js';
+
+const checker: PlatformChecker = checkKickLive;
+
+const status = await checker('trainwreckstv');
+console.log(status.isLive);
+```
+
+---
+
+### PlatformConfig
+
+Platform configuration including checker function.
+
+```typescript
+interface PlatformConfig {
+  name: string;
+  color: number;
+  emoji: string;
+  urlTemplate: string;
+  checker: PlatformChecker;
+}
+```
+
+<ResponseField name="PlatformConfig" type="object">
+  Complete configuration for a platform.
+  
+  <Expandable title="Properties">
+    <ResponseField name="name" type="string" required>
+      Display name (e.g., `"Twitch"`, `"YouTube"`)
+    </ResponseField>
+    
+    <ResponseField name="color" type="number" required>
+      Embed color as hexadecimal number (e.g., `0x9146FF` for Twitch purple)
+    </ResponseField>
+    
+    <ResponseField name="emoji" type="string" required>
+      Platform emoji for UI display
+    </ResponseField>
+    
+    <ResponseField name="urlTemplate" type="string" required>
+      URL template with `{username}` placeholder
+    </ResponseField>
+    
+    <ResponseField name="checker" type="PlatformChecker" required>
+      Function to check live status for this platform
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example:**
+```typescript
+import type { PlatformConfig } from './types/streamer.js';
+import { getPlatformConfig } from './platforms/index.js';
+
+const config: PlatformConfig = getPlatformConfig('twitch');
+
+console.log(config.name);        // "Twitch"
+console.log(config.color);       // 0x9146FF
+console.log(config.emoji);       // "🟣"
+console.log(config.urlTemplate); // "https://twitch.tv/{username}"
+
+const status = await config.checker('xqc');
+```
+
+---
+
+## Discord Types
+
+### Command
+
+Slash command structure.
+
+```typescript
+interface Command {
+  data: SlashCommandBuilder | SlashCommandSubcommandsOnlyBuilder | Omit<SlashCommandBuilder, "addSubcommand" | "addSubcommandGroup">;
+  execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  autocomplete?: (interaction: AutocompleteInteraction) => Promise<void>;
+}
+```
+
+<ResponseField name="Command" type="object">
+  Discord slash command definition.
+  
+  <Expandable title="Properties">
+    <ResponseField name="data" type="SlashCommandBuilder | ..." required>
+      Command builder with name, description, and options
+    </ResponseField>
+    
+    <ResponseField name="execute" type="(interaction) => Promise<void>" required>
+      Function to execute when command is invoked
+    </ResponseField>
+    
+    <ResponseField name="autocomplete" type="(interaction) => Promise<void>">
+      Optional autocomplete handler for command options
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example:**
+```typescript
+import type { Command } from './types/discord.js';
+import { SlashCommandBuilder } from 'discord.js';
+
+const pingCommand: Command = {
+  data: new SlashCommandBuilder()
+    .setName('ping')
+    .setDescription('Replies with Pong!'),
+  
+  execute: async (interaction) => {
+    await interaction.reply('Pong!');
+  },
+};
+```
+
+---
+
+### StreamerBotClient
+
+Extended Discord client with commands collection.
+
+```typescript
+interface StreamerBotClient extends Client {
+  commands: Collection<string, Command>;
+}
+```
+
+<ResponseField name="StreamerBotClient" type="interface">
+  Discord.js Client extended with command management.
+  
+  <Expandable title="Properties">
+    <ResponseField name="commands" type="Collection<string, Command>" required>
+      Collection of registered commands keyed by name
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example:**
+```typescript
+import type { StreamerBotClient } from './types/discord.js';
+import { StreamerBot } from './client/StreamerBot.js';
+
+const client: StreamerBotClient = new StreamerBot();
+
+// Register command
+client.commands.set('ping', pingCommand);
+
+// Get command
+const command = client.commands.get('ping');
+```
+
+---
+
+### InteractionData
+
+Custom data stored in button/select menu custom IDs.
+
+```typescript
+interface InteractionData {
+  action: string;
+  streamerId?: string;
+  page?: number;
+  platform?: string;
+  username?: string;
+}
+```
+
+<ResponseField name="InteractionData" type="object">
+  Data encoded in interaction custom IDs.
+  
+  <Expandable title="Properties">
+    <ResponseField name="action" type="string" required>
+      Action type identifier
+    </ResponseField>
+    
+    <ResponseField name="streamerId" type="string">
+      Streamer ID in format `platform:username`
+    </ResponseField>
+    
+    <ResponseField name="page" type="number">
+      Page number for pagination
+    </ResponseField>
+    
+    <ResponseField name="platform" type="string">
+      Platform for add flow
+    </ResponseField>
+    
+    <ResponseField name="username" type="string">
+      Username for add flow
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example:**
+```typescript
+import type { InteractionData } from './types/discord.js';
+import { encodeCustomId, decodeCustomId } from './types/discord.js';
+
+const data: InteractionData = {
+  action: 'confirm_remove',
+  streamerId: 'twitch:xqc',
+};
+
+const customId = encodeCustomId(data);
+console.log(customId); // JSON string
+
+const decoded = decodeCustomId(customId);
+if (decoded) {
+  console.log(decoded.action);     // "confirm_remove"
+  console.log(decoded.streamerId); // "twitch:xqc"
+}
+```
+
+---
+
+## Utility Functions
+
+### encodeCustomId()
+
+Encode interaction data into a custom ID string.
+
+```typescript
+function encodeCustomId(data: InteractionData): string
+```
+
+**Example:**
+```typescript
+const customId = encodeCustomId({
+  action: 'page_next',
+  page: 2,
+});
+```
+
+---
+
+### decodeCustomId()
+
+Decode a custom ID string into interaction data.
+
+```typescript
+function decodeCustomId(customId: string): InteractionData | null
+```
+
+**Example:**
+```typescript
+const data = decodeCustomId(interaction.customId);
+if (data) {
+  console.log(`Action: ${data.action}`);
+}
+```
+
+---
+
+## Constants
+
+### ButtonIds
+
+Button custom ID prefixes.
+
+```typescript
+export const ButtonIds = {
+  CONFIRM_REMOVE: "confirm_remove",
+  CANCEL: "cancel",
+  PAGE_PREV: "page_prev",
+  PAGE_NEXT: "page_next",
+  WATCH_STREAM: "watch_stream",
+} as const;
+```
+
+**Example:**
+```typescript
+import { ButtonIds } from './types/discord.js';
+
+const button = new ButtonBuilder()
+  .setCustomId(ButtonIds.WATCH_STREAM)
+  .setLabel('Watch Now');
+```
+
+---
+
+### SelectMenuIds
+
+Select menu custom ID prefixes.
+
+```typescript
+export const SelectMenuIds = {
+  CHANNEL_SELECT: "channel_select",
+  STREAMER_SELECT: "streamer_select",
+  HELP_CATEGORY: "help_category",
+} as const;
+```
+
+**Example:**
+```typescript
+import { SelectMenuIds } from './types/discord.js';
+
+const menu = new StringSelectMenuBuilder()
+  .setCustomId(SelectMenuIds.CHANNEL_SELECT)
+  .setPlaceholder('Select a channel');
+```
+
+---
+
+## Type Exports
+
+All types are re-exported from the main types index:
+
+```typescript
+// From types/index.ts
+export * from './streamer.js';
+export * from './discord.js';
+```
+
+**Import examples:**
+```typescript
+// Import specific types
+import type { Platform, LiveStatus, Streamer } from './types/index.js';
+
+// Import all types
+import * as Types from './types/index.js';
+
+const platform: Types.Platform = 'twitch';
+```

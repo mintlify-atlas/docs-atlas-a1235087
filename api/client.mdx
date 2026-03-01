@@ -1,0 +1,246 @@
+---
+title: 'Client'
+description: 'StreamerBot class and client factory for Discord bot initialization'
+---
+
+## StreamerBot
+
+Extended Discord.js Client for the Streamer Alerts Bot with command management and activity rotation.
+
+```typescript
+import { StreamerBot, createClient } from './client/StreamerBot.js';
+
+const client = new StreamerBot();
+```
+
+### Constructor
+
+Creates a new StreamerBot instance with pre-configured intents and partials.
+
+```typescript
+const bot = new StreamerBot();
+```
+
+**Configuration:**
+- Intents: `GatewayIntentBits.Guilds`, `GatewayIntentBits.GuildMessages`
+- Partials: `Partials.Channel`
+
+### Properties
+
+<ResponseField name="commands" type="Collection<string, Command>">
+  Collection of registered slash commands, keyed by command name.
+</ResponseField>
+
+### Methods
+
+#### updateActivity()
+
+Updates the bot's Discord activity status to display current streamer and server counts.
+
+```typescript
+client.updateActivity();
+```
+
+**Signature:**
+```typescript
+public updateActivity(): void
+```
+
+**Behavior:**
+- Fetches total streamer count from database
+- Counts servers in guild cache
+- Sets activity to `Watching X streamers | Y servers`
+
+**Example:**
+```typescript
+import { getTotalStreamerCount } from '../database/index.js';
+
+const streamerCount = getTotalStreamerCount();
+const serverCount = client.guilds.cache.size;
+
+client.user?.setActivity({
+  name: `${streamerCount} streamers | ${serverCount} servers`,
+  type: ActivityType.Watching,
+});
+```
+
+---
+
+#### startActivityRotation()
+
+Starts periodic activity status updates.
+
+```typescript
+client.startActivityRotation(30000);
+```
+
+**Signature:**
+```typescript
+public startActivityRotation(intervalMs: number = 30_000): void
+```
+
+<ParamField path="intervalMs" type="number" default={30000}>
+  Update interval in milliseconds. Defaults to 30 seconds.
+</ParamField>
+
+**Behavior:**
+- Calls `updateActivity()` immediately
+- Sets interval to update periodically
+- Logs rotation start to console
+
+**Example:**
+```typescript
+// Update every minute
+client.startActivityRotation(60_000);
+
+// Use default (30 seconds)
+client.startActivityRotation();
+```
+
+---
+
+#### registerCommand()
+
+Registers a slash command with the bot.
+
+```typescript
+import { addCommand } from '../commands/add.js';
+
+client.registerCommand(addCommand);
+```
+
+**Signature:**
+```typescript
+public registerCommand(command: Command): void
+```
+
+<ParamField path="command" type="Command" required>
+  Command object with `data` and `execute` properties.
+</ParamField>
+
+**Example:**
+```typescript
+const myCommand: Command = {
+  data: new SlashCommandBuilder()
+    .setName('ping')
+    .setDescription('Replies with Pong!'),
+  execute: async (interaction) => {
+    await interaction.reply('Pong!');
+  },
+};
+
+client.registerCommand(myCommand);
+```
+
+---
+
+#### getCommand()
+
+Retrieves a registered command by name.
+
+```typescript
+const command = client.getCommand('add');
+```
+
+**Signature:**
+```typescript
+public getCommand(name: string): Command | undefined
+```
+
+<ParamField path="name" type="string" required>
+  The command name to retrieve.
+</ParamField>
+
+<ResponseField name="return" type="Command | undefined">
+  The command object if found, otherwise `undefined`.
+</ResponseField>
+
+**Example:**
+```typescript
+const addCommand = client.getCommand('add');
+if (addCommand) {
+  console.log(`Found command: ${addCommand.data.name}`);
+}
+```
+
+---
+
+## createClient()
+
+Factory function to create and configure a StreamerBot instance.
+
+```typescript
+import { createClient } from './client/StreamerBot.js';
+
+const client = createClient();
+```
+
+**Signature:**
+```typescript
+export function createClient(): StreamerBot
+```
+
+<ResponseField name="return" type="StreamerBot">
+  A new configured StreamerBot instance.
+</ResponseField>
+
+**Example:**
+```typescript
+import { createClient } from './client/StreamerBot.js';
+import { TOKEN } from './config.js';
+
+const client = createClient();
+
+// Register commands
+client.registerCommand(addCommand);
+client.registerCommand(listCommand);
+
+// Start bot
+await client.login(TOKEN);
+client.startActivityRotation();
+```
+
+---
+
+## Full Usage Example
+
+```typescript
+import { createClient } from './client/StreamerBot.js';
+import { addCommand } from './commands/add.js';
+import { listCommand } from './commands/list.js';
+import { removeCommand } from './commands/remove.js';
+import { TOKEN } from './config.js';
+
+const client = createClient();
+
+// Register all commands
+client.registerCommand(addCommand);
+client.registerCommand(listCommand);
+client.registerCommand(removeCommand);
+
+// Set up event handlers
+client.once('ready', () => {
+  console.log(`Logged in as ${client.user?.tag}`);
+  client.startActivityRotation();
+});
+
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+  
+  const command = client.getCommand(interaction.commandName);
+  if (!command) return;
+  
+  try {
+    await command.execute(interaction);
+  } catch (error) {
+    console.error(error);
+    await interaction.reply({
+      content: 'An error occurred!',
+      ephemeral: true,
+    });
+  }
+});
+
+// Login
+await client.login(TOKEN);
+```

@@ -1,0 +1,670 @@
+---
+title: 'Discord Commands'
+description: 'Complete reference for all slash commands and interactions'
+icon: 'terminal'
+---
+
+The bot uses Discord's modern slash command system with interactive components like select menus, buttons, and modals.
+
+## Command Overview
+
+<CardGroup cols={2}>
+  <Card title="/streamer add" icon="plus" color="#57f287">
+    Add a streamer to track
+  </Card>
+  <Card title="/streamer remove" icon="minus" color="#ed4245">
+    Remove a tracked streamer
+  </Card>
+  <Card title="/streamer list" icon="list" color="#5865f2">
+    View all tracked streamers
+  </Card>
+  <Card title="/help" icon="question" color="#5865f2">
+    Show help menu
+  </Card>
+  <Card title="/ping" icon="signal" color="#5865f2">
+    Check bot latency
+  </Card>
+</CardGroup>
+
+## Streamer Commands
+
+### /streamer add
+
+<ParamField path="platform" type="choice" required>
+  Select streaming platform: Kick, Twitch, YouTube, Rumble, or TikTok
+</ParamField>
+
+<ParamField path="username" type="string" required>
+  Streamer's username or handle (@ symbol is automatically removed)
+</ParamField>
+
+**Required Permission:** `Manage Channels`
+
+#### Command Flow
+
+<Steps>
+  <Step title="Execute Command">
+    User runs `/streamer add platform:twitch username:ninja`
+  </Step>
+  
+  <Step title="Duplicate Check">
+    Bot checks if the streamer is already being tracked:
+    
+    ```typescript
+    const streamerId = createStreamerId(platform, cleanUsername);
+    const existingStreamers = getStreamers(guildId);
+    
+    if (existingStreamers.some((s) => s.id === streamerId)) {
+      // Show error embed
+    }
+    ```
+  </Step>
+  
+  <Step title="Channel Selection">
+    Bot shows an embed with a channel select menu:
+    
+    ```typescript
+    const embed = createAddPromptEmbed(platform, cleanUsername);
+    const channelSelect = createChannelSelect(platform, cleanUsername);
+    const cancelButton = createCancelButton();
+    
+    await interaction.reply({
+      embeds: [embed],
+      components: [channelSelect, cancelButton],
+      ephemeral: true,
+    });
+    ```
+  </Step>
+  
+  <Step title="User Selects Channel">
+    User picks the Discord channel for alerts using the select menu
+  </Step>
+  
+  <Step title="Confirmation">
+    Bot saves the streamer and shows success message
+  </Step>
+</Steps>
+
+#### Implementation
+
+```typescript
+// From add.ts:15-68
+export async function handleAdd(
+  interaction: ChatInputCommandInteraction,
+  platform: Platform,
+  username: string,
+): Promise<void> {
+  const guildId = interaction.guildId;
+
+  if (!guildId) {
+    await interaction.reply({
+      embeds: [
+        createErrorEmbed("Error", "This command can only be used in a server."),
+      ],
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // Clean username (remove @ if present)
+  const cleanUsername = username.replace(/^@/, "").trim().toLowerCase();
+
+  // Check for duplicate
+  const streamerId = createStreamerId(platform, cleanUsername);
+  const existingStreamers = getStreamers(guildId);
+
+  if (existingStreamers.some((s) => s.id === streamerId)) {
+    await interaction.reply({
+      embeds: [
+        createErrorEmbed(
+          "Already Tracking",
+          `**${cleanUsername}** on ${platform} is already being tracked.`,
+        ),
+      ],
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // Show channel selection
+  const embed = createAddPromptEmbed(platform, cleanUsername);
+  const channelSelect = createChannelSelect(platform, cleanUsername);
+  const cancelButton = createCancelButton();
+
+  await interaction.reply({
+    embeds: [embed],
+    components: [channelSelect, cancelButton],
+    ephemeral: true,
+  });
+}
+```
+
+#### Example Usage
+
+<CodeGroup>
+  ```bash Kick Streamer
+  /streamer add platform:Kick username:trainwreckstv
+  ```
+
+  ```bash Twitch Streamer
+  /streamer add platform:Twitch username:xqc
+  ```
+
+  ```bash YouTube Channel
+  /streamer add platform:YouTube username:MrBeast
+  ```
+</CodeGroup>
+
+<Note>
+  The username is automatically cleaned - `@ninja` becomes `ninja`. Usernames are converted to lowercase for consistency.
+</Note>
+
+---
+
+### /streamer remove
+
+**Required Permission:** `Manage Channels`
+
+#### Command Flow
+
+<Steps>
+  <Step title="Execute Command">
+    User runs `/streamer remove`
+  </Step>
+  
+  <Step title="Fetch Streamers">
+    Bot retrieves all tracked streamers for the server:
+    
+    ```typescript
+    const streamers = getStreamers(guildId);
+    
+    if (streamers.length === 0) {
+      await interaction.reply({
+        embeds: [
+          createErrorEmbed(
+            "No Streamers",
+            "No streamers are being tracked.\n\nUse `/streamer add` to add a streamer.",
+          ),
+        ],
+        ephemeral: true,
+      });
+      return;
+    }
+    ```
+  </Step>
+  
+  <Step title="Streamer Selection">
+    Bot shows select menu with all tracked streamers:
+    
+    ```typescript
+    const embed = createRemoveSelectEmbed();
+    const streamerSelect = createStreamerSelect(streamers);
+    const cancelButton = createCancelButton();
+    
+    await interaction.reply({
+      embeds: [embed],
+      components: [streamerSelect, cancelButton],
+      ephemeral: true,
+    });
+    ```
+  </Step>
+  
+  <Step title="Confirmation Dialog">
+    After selection, bot shows Yes/Cancel buttons for confirmation
+  </Step>
+  
+  <Step title="Removal">
+    Upon confirmation, bot removes the streamer and updates the database
+  </Step>
+</Steps>
+
+#### Implementation
+
+```typescript
+// From remove.ts:14-61
+export async function handleRemove(
+  interaction: ChatInputCommandInteraction,
+): Promise<void> {
+  const guildId = interaction.guildId;
+
+  if (!guildId) {
+    await interaction.reply({
+      embeds: [
+        createErrorEmbed("Error", "This command can only be used in a server."),
+      ],
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // Get existing streamers
+  const streamers = getStreamers(guildId);
+
+  if (streamers.length === 0) {
+    await interaction.reply({
+      embeds: [
+        createErrorEmbed(
+          "No Streamers",
+          "No streamers are being tracked.\n\nUse `/streamer add` to add a streamer.",
+        ),
+      ],
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // Show streamer selection
+  const embed = createRemoveSelectEmbed();
+  const streamerSelect = createStreamerSelect(streamers);
+  const cancelButton = createCancelButton();
+
+  await interaction.reply({
+    embeds: [embed],
+    components: [streamerSelect, cancelButton],
+    ephemeral: true,
+  });
+}
+```
+
+---
+
+### /streamer list
+
+Shows all streamers being tracked in the current server.
+
+**Required Permission:** None (available to all users)
+
+#### Features
+
+<AccordionGroup>
+  <Accordion title="Display Information">
+    For each streamer:
+    - Platform emoji (🟢 🟣 🔴 ⚫)
+    - Username in bold
+    - Platform name
+    - Live status indicator (🔴 LIVE)
+    - Notification channel mention
+  </Accordion>
+
+  <Accordion title="Pagination">
+    - 10 streamers per page (configurable via `ITEMS_PER_PAGE`)
+    - Previous/Next buttons for navigation
+    - Page counter in footer: "Page 1/3"
+  </Accordion>
+</AccordionGroup>
+
+#### Implementation
+
+```typescript
+// From list.ts:11-44
+export async function handleList(
+  interaction: ChatInputCommandInteraction,
+): Promise<void> {
+  const guildId = interaction.guildId;
+
+  if (!guildId) {
+    await interaction.reply({
+      embeds: [
+        createErrorEmbed("Error", "This command can only be used in a server."),
+      ],
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const streamers = getStreamers(guildId);
+  const totalPages = Math.ceil(streamers.length / ITEMS_PER_PAGE) || 1;
+
+  const embed = createListEmbed(streamers, 1);
+  const components =
+    totalPages > 1 ? [createPaginationButtons(1, totalPages)] : [];
+
+  await interaction.reply({
+    embeds: [embed],
+    components,
+    ephemeral: true,
+  });
+}
+```
+
+#### List Embed Structure
+
+```typescript
+// From embeds.ts:128-163
+export function createListEmbed(
+  streamers: Streamer[],
+  page: number = 1,
+): EmbedBuilder {
+  const totalPages = Math.ceil(streamers.length / ITEMS_PER_PAGE) || 1;
+  const startIndex = (page - 1) * ITEMS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, streamers.length);
+  const pageStreamers = streamers.slice(startIndex, endIndex);
+
+  const embed = new EmbedBuilder()
+    .setColor(Colors.INFO)
+    .setTitle(
+      `📋 Tracked Streamers (${startIndex + 1}-${endIndex} of ${streamers.length})`,
+    )
+    .setTimestamp();
+
+  if (streamers.length === 0) {
+    embed.setDescription(
+      "No streamers are being tracked.\n\nUse `/streamer add` to add a streamer.",
+    );
+    return embed;
+  }
+
+  const description = pageStreamers
+    .map((s) => {
+      const platform = PLATFORMS[s.platform];
+      const liveIndicator = s.isLive ? " • 🔴 LIVE" : "";
+      return `${platform.emoji} **${s.username}** • ${platform.name}${liveIndicator}\n   └ Alerts → <#${s.channelId}>`;
+    })
+    .join("\n\n");
+
+  embed.setDescription(description);
+  embed.setFooter({ text: `Page ${page}/${totalPages}` });
+
+  return embed;
+}
+```
+
+#### Example Output
+
+```
+📋 Tracked Streamers (1-5 of 12)
+
+🟣 **xqc** • Twitch • 🔴 LIVE
+   └ Alerts → #stream-alerts
+
+🟢 **trainwreckstv** • Kick
+   └ Alerts → #stream-alerts
+
+🔴 **MrBeast** • YouTube
+   └ Alerts → #youtube-streams
+
+Page 1/3
+```
+
+---
+
+## Utility Commands
+
+### /help
+
+Displays an interactive help menu with all available commands and supported platforms.
+
+**Required Permission:** None
+
+#### Implementation
+
+```typescript
+// From help.ts:9-28
+export const helpCommand: Command = {
+  data: new SlashCommandBuilder()
+    .setName("help")
+    .setDescription("Show bot help and commands"),
+
+  async execute(interaction: ChatInputCommandInteraction): Promise<void> {
+    const embed = createHelpEmbed();
+
+    await interaction.reply({
+      embeds: [embed],
+      ephemeral: true,
+    });
+
+    logger.command(
+      "help",
+      interaction.user.tag,
+      interaction.guild?.name ?? "DM",
+    );
+  },
+};
+```
+
+#### Help Embed Content
+
+```typescript
+// From embeds.ts:262-296
+export function createHelpEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(Colors.INFO)
+    .setTitle("📚 Streamer Alerts Bot - Help")
+    .setDescription(
+      "Track your favorite streamers and get notified when they go live!",
+    )
+    .addFields(
+      {
+        name: "📡 Streamer Commands",
+        value: [
+          "`/streamer add <platform> <username>` - Add a streamer to track",
+          "`/streamer remove` - Remove a tracked streamer",
+          "`/streamer list` - List all tracked streamers",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "🛠️ Utility Commands",
+        value: [
+          "`/help` - Show this help message",
+          "`/ping` - Check bot latency",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "📺 Supported Platforms",
+        value: Object.values(PLATFORMS)
+          .map((p) => `${p.emoji} ${p.name}`)
+          .join(" • "),
+        inline: false,
+      },
+    )
+    .setTimestamp();
+}
+```
+
+---
+
+### /ping
+
+Checks bot response time and WebSocket latency.
+
+**Required Permission:** None
+
+#### Features
+
+<ParamField path="Latency" type="number">
+  Round-trip time between command execution and response (in milliseconds)
+</ParamField>
+
+<ParamField path="API Latency" type="number">
+  WebSocket ping to Discord gateway (in milliseconds)
+</ParamField>
+
+#### Implementation
+
+```typescript
+// From ping.ts:9-37
+export const pingCommand: Command = {
+  data: new SlashCommandBuilder()
+    .setName("ping")
+    .setDescription("Check bot latency"),
+
+  async execute(interaction: ChatInputCommandInteraction): Promise<void> {
+    const sent = await interaction.reply({
+      content: "🏓 Pinging...",
+      ephemeral: true,
+      fetchReply: true,
+    });
+
+    const latency = sent.createdTimestamp - interaction.createdTimestamp;
+    const apiLatency = Math.round(interaction.client.ws.ping);
+
+    const embed = createPingEmbed(latency, apiLatency);
+
+    await interaction.editReply({
+      content: "",
+      embeds: [embed],
+    });
+
+    logger.command(
+      "ping",
+      interaction.user.tag,
+      interaction.guild?.name ?? "DM",
+    );
+  },
+};
+```
+
+#### Ping Embed
+
+```typescript
+// From embeds.ts:301-312
+export function createPingEmbed(
+  latency: number,
+  apiLatency: number,
+): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(Colors.INFO)
+    .setTitle("🏓 Pong!")
+    .addFields(
+      { name: "Latency", value: `${latency}ms`, inline: true },
+      { name: "API Latency", value: `${apiLatency}ms`, inline: true },
+    );
+}
+```
+
+---
+
+## Permission System
+
+Commands have different permission requirements:
+
+| Command | Permission Required | Reason |
+|---------|-------------------|--------|
+| `/streamer add` | `Manage Channels` | Modifies server configuration |
+| `/streamer remove` | `Manage Channels` | Modifies server configuration |
+| `/streamer list` | None | Read-only information |
+| `/help` | None | Public utility |
+| `/ping` | None | Public utility |
+
+## Interactive Components
+
+The bot uses modern Discord UI components:
+
+<Tabs>
+  <Tab title="Select Menus">
+    **Channel Select Menu**
+    
+    Used in `/streamer add` to choose the notification channel:
+    
+    ```typescript
+    const channelSelect = new ChannelSelectMenuBuilder()
+      .setCustomId(`channel_select:${platform}:${username}`)
+      .setPlaceholder("Select a channel for notifications")
+      .setChannelTypes(ChannelType.GuildText);
+    ```
+
+    **Streamer Select Menu**
+    
+    Used in `/streamer remove` to choose which streamer to remove:
+    
+    ```typescript
+    const options = streamers.map((s) => ({
+      label: s.username,
+      description: `${PLATFORMS[s.platform].name} • #${channelName}`,
+      value: s.id,
+      emoji: PLATFORMS[s.platform].emoji,
+    }));
+    ```
+  </Tab>
+
+  <Tab title="Buttons">
+    **Pagination Buttons**
+    
+    Used in `/streamer list` for page navigation:
+    
+    ```typescript
+    const row = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(`list:prev:${page}`)
+          .setLabel("Previous")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(page === 1),
+        new ButtonBuilder()
+          .setCustomId(`list:next:${page}`)
+          .setLabel("Next")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(page === totalPages),
+      );
+    ```
+
+    **Confirmation Buttons**
+    
+    Used for streamer removal confirmation:
+    
+    ```typescript
+    new ButtonBuilder()
+      .setCustomId(`remove:confirm:${streamerId}`)
+      .setLabel("Yes, Remove")
+      .setStyle(ButtonStyle.Danger),
+    
+    new ButtonBuilder()
+      .setCustomId(`remove:cancel`)
+      .setLabel("Cancel")
+      .setStyle(ButtonStyle.Secondary),
+    ```
+
+    **Watch Button**
+    
+    Included in live alerts:
+    
+    ```typescript
+    new ButtonBuilder()
+      .setLabel(`Watch on ${platform}`)
+      .setStyle(ButtonStyle.Link)
+      .setURL(streamUrl)
+      .setEmoji(PLATFORMS[platform].emoji);
+    ```
+  </Tab>
+</Tabs>
+
+## Error Handling
+
+All commands include comprehensive error handling:
+
+```typescript
+// Guild-only check
+if (!guildId) {
+  await interaction.reply({
+    embeds: [
+      createErrorEmbed("Error", "This command can only be used in a server."),
+    ],
+    ephemeral: true,
+  });
+  return;
+}
+
+// Permission checks handled by Discord.js automatically
+// Error embeds for user-facing errors
+const embed = createErrorEmbed(
+  "Already Tracking",
+  `**${username}** on ${platform} is already being tracked.`,
+);
+```
+
+## Constants
+
+```typescript
+// From constants.ts:57-68
+export const ITEMS_PER_PAGE = 10; // Pagination limit
+
+export const Colors = {
+  SUCCESS: 0x57f287,  // Green
+  ERROR: 0xed4245,    // Red
+  WARNING: 0xfee75c,  // Yellow
+  INFO: 0x5865f2,     // Blurple
+  DEFAULT: 0x2b2d31,  // Dark gray
+} as const;
+```

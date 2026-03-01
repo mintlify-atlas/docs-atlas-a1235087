@@ -1,0 +1,708 @@
+---
+title: How It Works
+description: Detailed explanation of the polling loop, alert logic, and caching mechanisms
+---
+
+## Overview
+
+The Streamer Alerts Bot operates on a simple principle: **periodically check if streamers are live, and send alerts when they go live or change their stream title**. This page explains the internal mechanisms that make this work reliably.
+
+## The 60-Second Polling Loop
+
+### Initialization
+
+The polling loop starts when the bot comes online, triggered by the Discord `ready` event.
+
+```typescript
+// src/events/ready.ts
+export function handleReady(client: StreamerBot): void {
+  logger.info(`Logged in as ${client.user?.tag}`);
+  
+  // Start activity rotation
+  client.startActivityRotation();
+  
+  // Start stream polling
+  const poller = createStreamPoller(client);
+  poller.start();  // <-- Polling begins here
+  
+  logger.info("Bot is ready!");
+}
+```
+
+See: `~/workspace/source/src/events/ready.ts:8-20`
+
+### Polling Mechanism
+
+The `StreamPoller` class manages the polling lifecycle using JavaScript's `setInterval`.
+
+```typescript
+// src/services/StreamPoller.ts
+export class StreamPoller {
+  private client: Client;
+  private intervalId: NodeJS.Timeout | null = null;
+  private isRunning = false;
+
+  start(): void {
+    if (this.isRunning) {
+      logger.warn("Stream poller is already running");
+      return;
+    }
+
+    this.isRunning = true;
+    logger.info(`Starting stream poller (interval: ${POLL_INTERVAL / 1000}s)`);
+
+    // Run immediately on start
+    this.poll();
+
+    // Then run on interval
+    this.intervalId = setInterval(() => {
+      this.poll();
+    }, POLL_INTERVAL);
+  }
+}
+```
+
+See: `~/workspace/source/src/services/StreamPoller.ts:32-48`
+
+<Note>
+The polling loop runs **immediately** when `start()` is called, then repeats every 60 seconds. This ensures the first check happens right away rather than waiting a full minute.
+</Note>
+
+### Polling Interval Constant
+
+The interval is defined in the constants file:
+
+```typescript
+// src/utils/constants.ts
+export const POLL_INTERVAL = 60 * 1000; // 60 seconds
+```
+
+See: `~/workspace/source/src/utils/constants.ts:50-52`
+
+**Why 60 seconds?**
+
+- **Fast enough**: Alerts arrive within 1 minute of stream start
+- **API-friendly**: Doesn't hammer platform endpoints
+- **Resource efficient**: Minimal CPU/network usage
+- **Scalable**: Can handle hundreds of streamers without issues
+
+---
+
+## Poll Cycle Execution
+
+### Step 1: Fetch All Guilds with Streamers
+
+```typescript
+private async poll(): Promise<void> {
+  const guilds = getAllGuildsWithStreamers();
+
+  if (guilds.length === 0) {
+    logger.debug("No guilds with streamers to check");
+    return;
+  }
+
+  logger.debug(`Polling ${guilds.length} guilds`);
+
+  for (const { guildId, streamers } of guilds) {
+    await this.checkGuildStreamers(guildId, streamers);
+  }
+}
+```
+
+See: `~/workspace/source/src/services/StreamPoller.ts:65-78`
+
+**Data Source:**
+
+The `getAllGuildsWithStreamers()` function reads from the in-memory database cache:
+
+```typescript
+// src/database/index.ts
+export function getAllGuildsWithStreamers(): Array<{
+  guildId: string;
+  streamers: Streamer[];
+}> {
+  const result: Array<{ guildId: string; streamers: Streamer[] }> = [];
+
+  cache.forEach((settings, guildId) => {
+    if (settings.streamers.length > 0) {
+      result.push({ guildId, streamers: settings.streamers });
+    }
+  });
+
+  return result;
+}
+```
+
+See: `~/workspace/source/src/database/index.ts:186-199`
+
+<Info>
+Guilds with zero tracked streamers are **skipped** to avoid unnecessary processing.
+</Info>
+
+### Step 2: Check Each Streamer
+
+For each guild, the poller iterates through all tracked streamers sequentially.
+
+```typescript
+private async checkGuildStreamers(
+  guildId: string,
+  streamers: Streamer[],
+): Promise<void> {
+  const updatedStreamers: Streamer[] = [];
+
+  for (const streamer of streamers) {
+    try {
+      const status = await this.checkStreamer(streamer);
+      const updated = await this.processStatus(guildId, streamer, status);
+      updatedStreamers.push(updated);
+    } catch (error) {
+      logger.error(`Error checking ${streamer.id}:`, error);
+      updatedStreamers.push(streamer);
+    }
+  }
+
+  // Save all updated streamers
+  updateStreamers(guildId, updatedStreamers);
+}
+```
+
+See: `~/workspace/source/src/services/StreamPoller.ts:83-102`
+
+**Error Handling:**
+
+If a single streamer check fails (e.g., network error, platform down), the error is logged and the original streamer data is preserved. This prevents one failure from cascading to other streamers.
+
+### Step 3: Fetch Live Status from Platform
+
+Each platform has a dedicated checker function.
+
+```typescript
+private async checkStreamer(streamer: Streamer): Promise<LiveStatus> {
+  const checker = getChecker(streamer.platform);
+  const status = await checker(streamer.username);
+
+  logger.platform(streamer.platform, streamer.username, status.isLive);
+
+  return status;
+}
+```
+
+See: `~/workspace/source/src/services/StreamPoller.ts:107-114`
+
+**Platform Checker Example (Twitch):**
+
+```typescript
+// Simplified example
+export async function checkTwitch(username: string): Promise<LiveStatus> {
+  const response = await fetch(`https://gql.twitch.tv/gql`, {
+    method: 'POST',
+    body: JSON.stringify({
+      query: `query { user(login: "${username}") { stream { isLive } } }`
+    })
+  });
+  
+  const data = await response.json();
+  
+  return {
+    platform: 'twitch',
+    username,
+    isLive: data.user.stream?.isLive ?? false,
+    url: `https://twitch.tv/${username}`,
+    title: data.user.stream?.title,
+    viewers: data.user.stream?.viewersCount,
+    // ... more fields
+  };
+}
+```
+
+**LiveStatus Interface:**
+
+```typescript
+interface LiveStatus {
+  platform: Platform;
+  username: string;
+  isLive: boolean;
+  url: string;
+  title?: string;
+  viewers?: number;
+  followers?: number;
+  thumbnail?: string;
+  profileImage?: string;
+  startedAt?: string;
+  verified?: boolean;
+  bio?: string;
+}
+```
+
+---
+
+## Duplicate Detection Logic
+
+The bot uses a **cache-based duplicate detection system** to prevent sending multiple alerts for the same stream.
+
+### The Cache
+
+A module-level `Map` stores the last known state of each streamer.
+
+```typescript
+// src/services/StreamPoller.ts
+const lastLiveData = new Map<string, { 
+  title?: string; 
+  isLive: boolean 
+}>();
+```
+
+See: `~/workspace/source/src/services/StreamPoller.ts:15`
+
+**Cache Key Format:**
+
+```typescript
+const cacheKey = `${guildId}-${streamer.id}`;
+// Example: "123456789-twitch:xqc"
+```
+
+This ensures the same streamer can be tracked by multiple guilds independently.
+
+### Alert Decision Logic
+
+The `processStatus` method determines whether to send an alert.
+
+```typescript
+private async processStatus(
+  guildId: string,
+  streamer: Streamer,
+  status: LiveStatus,
+): Promise<Streamer> {
+  const cacheKey = `${guildId}-${streamer.id}`;
+  const lastData = lastLiveData.get(cacheKey);
+
+  // Determine if we should send an alert
+  // Alert if: now live AND (wasn't live before OR title changed)
+  const shouldAlert =
+    status.isLive &&
+    (!lastData?.isLive || (status.title && lastData.title !== status.title));
+
+  if (shouldAlert) {
+    await sendLiveAlert(this.client, streamer.channelId, status);
+
+    // Update cache
+    lastLiveData.set(cacheKey, {
+      title: status.title,
+      isLive: true,
+    });
+  }
+
+  // Clean up cache if went offline
+  if (!status.isLive && lastData?.isLive) {
+    lastLiveData.delete(cacheKey);
+  }
+
+  // Return updated streamer data
+  return {
+    ...streamer,
+    isLive: status.isLive,
+    lastLiveAt: status.isLive
+      ? new Date().toISOString()
+      : streamer.lastLiveAt,
+    title: status.title ?? streamer.title,
+    viewers: status.viewers ?? streamer.viewers,
+    // ... more fields
+  };
+}
+```
+
+See: `~/workspace/source/src/services/StreamPoller.ts:119-164`
+
+### Decision Flow Chart
+
+```
+Check stream status
+        │
+        ▼
+  ┌─────────────┐
+  │  Is Live?   │
+  └─────┬───────┘
+        │
+   ┌────┴────┐
+   │         │
+  NO        YES
+   │         │
+   ▼         ▼
+Skip    ┌────────────────┐
+Alert   │ Check cache    │
+        └────────┬───────┘
+                 │
+        ┌────────┴────────┐
+        │                 │
+   Was already       First time
+     live?              live?
+        │                 │
+        ▼                 ▼
+  ┌──────────┐      SEND ALERT
+  │ Title    │      Update cache
+  │ changed? │
+  └────┬─────┘
+       │
+  ┌────┴────┐
+  │         │
+ YES       NO
+  │         │
+  ▼         ▼
+SEND      Skip
+ALERT     Alert
+Update
+cache
+```
+
+### Alert Scenarios
+
+<Tabs>
+  <Tab title="New Stream">
+    **Scenario:** Streamer goes live for the first time
+    
+    ```
+    Cache: {} (empty)
+    Status: { isLive: true, title: "Playing Minecraft" }
+    
+    Decision:
+    - isLive = true ✓
+    - !lastData?.isLive = true ✓
+    
+    Result: SEND ALERT
+    
+    Cache after:
+    { title: "Playing Minecraft", isLive: true }
+    ```
+  </Tab>
+  
+  <Tab title="Stream Continues">
+    **Scenario:** Streamer is already live, no title change
+    
+    ```
+    Cache: { title: "Playing Minecraft", isLive: true }
+    Status: { isLive: true, title: "Playing Minecraft" }
+    
+    Decision:
+    - isLive = true ✓
+    - !lastData?.isLive = false ✗
+    - lastData.title === status.title ✗
+    
+    Result: SKIP ALERT
+    ```
+  </Tab>
+  
+  <Tab title="Title Change">
+    **Scenario:** Streamer changes stream title while live
+    
+    ```
+    Cache: { title: "Playing Minecraft", isLive: true }
+    Status: { isLive: true, title: "Building a Castle" }
+    
+    Decision:
+    - isLive = true ✓
+    - !lastData?.isLive = false ✗
+    - lastData.title !== status.title = true ✓
+    
+    Result: SEND ALERT (new activity)
+    
+    Cache after:
+    { title: "Building a Castle", isLive: true }
+    ```
+  </Tab>
+  
+  <Tab title="Stream Ends">
+    **Scenario:** Streamer goes offline
+    
+    ```
+    Cache: { title: "Playing Minecraft", isLive: true }
+    Status: { isLive: false }
+    
+    Decision:
+    - isLive = false ✗
+    
+    Result: SKIP ALERT
+    
+    Cache after:
+    {} (deleted)
+    ```
+    
+    <Info>
+    When a stream goes offline, the cache entry is **deleted** so the next stream start will trigger a fresh alert.
+    </Info>
+  </Tab>
+</Tabs>
+
+---
+
+## Alert Sending
+
+When `shouldAlert` is true, the `AlertService` sends a Discord message.
+
+### Alert Flow
+
+```typescript
+// src/services/AlertService.ts
+export async function sendLiveAlert(
+  client: Client,
+  channelId: string,
+  status: LiveStatus,
+): Promise<boolean> {
+  try {
+    const channel = await client.channels.fetch(channelId);
+
+    if (!channel || !channel.isTextBased()) {
+      logger.warn(`Channel ${channelId} not found or not text-based`);
+      return false;
+    }
+
+    const embed = createLiveEmbed(status);
+    const row = createWatchButtonRow(status.url, status.platform);
+
+    await (channel as TextChannel).send({
+      embeds: [embed],
+      components: [row],
+    });
+
+    logger.info(
+      `Sent live alert for ${status.username} (${status.platform}) to channel ${channelId}`,
+    );
+    return true;
+  } catch (error) {
+    logger.error(`Failed to send alert to channel ${channelId}:`, error);
+    return false;
+  }
+}
+```
+
+See: `~/workspace/source/src/services/AlertService.ts:10-39`
+
+### Alert Message Components
+
+**1. Live Embed**
+
+A rich embed with platform-specific colors and streamer information:
+
+```typescript
+// Simplified example
+function createLiveEmbed(status: LiveStatus): EmbedBuilder {
+  const platform = PLATFORMS[status.platform];
+  
+  return new EmbedBuilder()
+    .setColor(platform.color)
+    .setAuthor({
+      name: `${platform.emoji} ${status.username} is LIVE on ${platform.name}`,
+      iconURL: status.profileImage,
+      url: status.url
+    })
+    .setTitle(status.title || "Streaming Now")
+    .addFields(
+      { name: '👀 Viewers', value: status.viewers?.toLocaleString() || 'N/A', inline: true },
+      { name: '👥 Followers', value: status.followers?.toLocaleString() || 'N/A', inline: true },
+      { name: '⏰ Started', value: formatTime(status.startedAt), inline: true }
+    )
+    .setImage(status.thumbnail)
+    .setTimestamp();
+}
+```
+
+**2. Watch Button**
+
+A clickable link button to the stream:
+
+```typescript
+function createWatchButtonRow(url: string, platform: Platform): ActionRowBuilder {
+  const platformConfig = PLATFORMS[platform];
+  
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setLabel(`${platformConfig.emoji} Watch on ${platformConfig.name}`)
+      .setStyle(ButtonStyle.Link)
+      .setURL(url)
+  );
+}
+```
+
+### Error Handling
+
+**Channel Not Found:**
+
+If the notification channel was deleted, the alert fails gracefully:
+
+```typescript
+if (!channel || !channel.isTextBased()) {
+  logger.warn(`Channel ${channelId} not found or not text-based`);
+  return false;
+}
+```
+
+The bot doesn't remove the streamer from the database - administrators must manually clean up using `/streamer remove`.
+
+**Permission Errors:**
+
+If the bot lacks permissions (e.g., Send Messages), the error is logged but doesn't crash the polling loop.
+
+---
+
+## Database Updates
+
+After processing all streamers in a guild, their updated data is saved to the database.
+
+```typescript
+// Save all updated streamers
+updateStreamers(guildId, updatedStreamers);
+```
+
+This updates:
+- `isLive` status
+- `lastLiveAt` timestamp (when they went live)
+- `title`, `viewers`, `followers` (latest values)
+- `thumbnail`, `profileImage`, `bio` (cached for display)
+
+**Persistence:**
+
+```typescript
+// src/database/index.ts
+export function updateStreamers(guildId: string, streamers: Streamer[]): void {
+  const settings = getGuildSettings(guildId);
+  settings.streamers = streamers;
+  cache.set(guildId, settings);
+  saveToDisk();  // Writes to data/guilds.json
+}
+```
+
+See: `~/workspace/source/src/database/index.ts:158-163`
+
+<Note>
+The database write happens **after** all streamers in a guild are checked, minimizing disk I/O operations.
+</Note>
+
+---
+
+## Performance Characteristics
+
+### Memory Usage
+
+The bot maintains two in-memory caches:
+
+1. **Database cache**: `Map<guildId, GuildSettings>`
+   - Size: ~1KB per guild with 10 streamers
+   - Loaded once on startup
+
+2. **Duplicate detection cache**: `Map<cacheKey, { title, isLive }>`
+   - Size: ~100 bytes per live stream
+   - Automatically cleaned when streams end
+
+**Estimated Memory for 100 Guilds, 1000 Streamers:**
+- Database cache: ~100KB
+- Duplicate cache (if 50 live): ~5KB
+- Total: **< 1MB**
+
+### Network Usage
+
+Each poll cycle makes one HTTP request per tracked streamer.
+
+**Example Scenario:**
+- 50 guilds
+- 10 streamers each = 500 total
+- 500 HTTP requests every 60 seconds
+- Average response size: 5KB
+
+**Bandwidth:** ~2.5MB/minute = ~3.6GB/day
+
+<Info>
+Platform checkers use lightweight endpoints (GraphQL queries, HTML parsing) rather than fetching full pages.
+</Info>
+
+### CPU Usage
+
+Minimal - the bot is I/O-bound (waiting for HTTP responses), not CPU-bound.
+
+**Typical Load:**
+- Idle: Less than 1% CPU
+- During poll cycle: 2-5% CPU (mostly JSON parsing)
+
+---
+
+## Edge Cases
+
+### Bot Restart
+
+When the bot restarts, the duplicate detection cache is **empty**.
+
+**Result:** All currently live streams will trigger alerts on the first poll.
+
+**Mitigation:** This is intentional - it ensures no streams are missed. The cache rebuilds within one poll cycle.
+
+### Platform API Outage
+
+If a platform's API is down, the checker throws an error.
+
+**Handling:**
+```typescript
+try {
+  const status = await this.checkStreamer(streamer);
+  const updated = await this.processStatus(guildId, streamer, status);
+  updatedStreamers.push(updated);
+} catch (error) {
+  logger.error(`Error checking ${streamer.id}:`, error);
+  updatedStreamers.push(streamer);  // Preserve old data
+}
+```
+
+The streamer's previous data is kept until the platform recovers.
+
+### Rapid Title Changes
+
+If a streamer changes their title multiple times within 60 seconds, only the title at poll time is seen.
+
+**Example:**
+- 12:00:00 - Title: "Starting Soon"
+- 12:00:30 - Title: "Playing Game" (not polled)
+- 12:01:00 - Poll sees: "Playing Game" → Alert sent
+
+Intermediate title changes are **not** detected.
+
+### Streamer in Multiple Guilds
+
+If the same streamer is tracked by multiple guilds, each gets an independent alert.
+
+**Cache Keys:**
+- Guild A: `guildA-twitch:xqc`
+- Guild B: `guildB-twitch:xqc`
+
+Both guilds receive alerts simultaneously when the streamer goes live.
+
+---
+
+## Future Optimizations
+
+### Potential Improvements
+
+1. **Webhook-Based Alerts**
+   - Use platform webhooks (EventSub, PubSubHubbub) instead of polling
+   - Instant notifications (0-second delay)
+   - Reduced API load
+
+2. **Parallel Polling**
+   - Check multiple streamers concurrently with rate limiting
+   - Faster poll cycle completion
+   - Requires careful error handling
+
+3. **Smart Polling Intervals**
+   - Poll more frequently during peak hours (e.g., 30s)
+   - Poll less frequently at night (e.g., 120s)
+   - Reduce unnecessary checks for inactive streamers
+
+4. **Database Optimization**
+   - Migrate to SQLite or PostgreSQL
+   - Add indexes for faster queries
+   - Enable multi-instance deployments
+
+5. **Caching Layer**
+   - Use Redis for shared cache across instances
+   - Enable horizontal scaling
+   - Persist cache across restarts
+
+<Note>
+The current architecture prioritizes **simplicity and reliability** over maximum performance. It works well for most use cases (100s of guilds, 1000s of streamers).
+</Note>

@@ -1,0 +1,210 @@
+---
+title: Bot Setup Guide
+description: Complete guide for setting up a Discord bot application and getting your bot token
+---
+
+## Overview
+
+This guide will walk you through creating a Discord bot application, configuring permissions, and obtaining your bot token to run the Streamer Alerts Bot.
+
+<Warning>
+  Never share your bot token with anyone. Treat it like a password - it gives full control over your bot.
+</Warning>
+
+## Prerequisites
+
+- A Discord account
+- A Discord server where you have administrator permissions
+- Node.js installed (v18 or higher)
+
+## Creating Your Bot Application
+
+<Steps>
+  <Step title="Access Discord Developer Portal">
+    Navigate to the [Discord Developer Portal](https://discord.com/developers/applications) and sign in with your Discord account.
+  </Step>
+
+  <Step title="Create New Application">
+    Click the **New Application** button in the top-right corner.
+
+    <Note>
+      Give your application a name (e.g., "Streamer Alerts"). You can change this later.
+    </Note>
+  </Step>
+
+  <Step title="Navigate to Bot Section">
+    In the left sidebar, click on **Bot** to access the bot settings.
+
+    If you haven't created a bot yet, click **Add Bot** and confirm.
+  </Step>
+
+  <Step title="Configure Bot Settings">
+    Under the bot settings, configure the following:
+
+    - **Username**: Set your bot's display name
+    - **Icon**: Upload a profile picture (optional)
+    - **Public Bot**: Toggle OFF if you only want to add it to your own servers
+  </Step>
+
+  <Step title="Enable Required Intents">
+    Scroll down to **Privileged Gateway Intents** and enable:
+
+    - ✅ **SERVER MEMBERS INTENT** (required for guild operations)
+    - ✅ **MESSAGE CONTENT INTENT** (required for message handling)
+
+    <Warning>
+      These intents are required for the bot to function properly. Without them, certain features will not work.
+    </Warning>
+  </Step>
+
+  <Step title="Copy Bot Token">
+    Under the **TOKEN** section, click **Reset Token** (or **Copy** if you haven't reset it).
+
+    Save this token securely - you'll need it for the next section.
+
+    <Warning>
+      You can only view the token once. If you lose it, you'll need to reset it again.
+    </Warning>
+  </Step>
+</Steps>
+
+## Configuring Bot Permissions
+
+The bot requires specific permissions to function:
+
+### Required Permissions
+
+- **Send Messages** - To send live alerts and command responses
+- **Embed Links** - To display rich embeds with stream information
+- **Use External Emojis** - To show platform emojis (🟣 Twitch, 🔴 YouTube, etc.)
+- **View Channels** - To access channels where alerts will be posted
+
+<Note>
+  Users need **Manage Channels** permission to add or remove streamers using `/streamer add` and `/streamer remove` commands.
+</Note>
+
+## Inviting the Bot to Your Server
+
+<Steps>
+  <Step title="Navigate to OAuth2">
+    In the Discord Developer Portal, go to **OAuth2** > **URL Generator** in the left sidebar.
+  </Step>
+
+  <Step title="Select Scopes">
+    Under **SCOPES**, select:
+    - ✅ `bot`
+    - ✅ `applications.commands`
+  </Step>
+
+  <Step title="Select Permissions">
+    Under **BOT PERMISSIONS**, select:
+    - ✅ Send Messages
+    - ✅ Embed Links
+    - ✅ Use External Emojis
+    - ✅ View Channels
+  </Step>
+
+  <Step title="Copy Invite URL">
+    Copy the generated URL at the bottom of the page.
+  </Step>
+
+  <Step title="Invite to Server">
+    Paste the URL in your browser, select your server, and click **Authorize**.
+  </Step>
+</Steps>
+
+## Installing and Running the Bot
+
+<Steps>
+  <Step title="Clone or Download the Bot">
+    Download the bot source code to your machine.
+  </Step>
+
+  <Step title="Install Dependencies">
+    Open a terminal in the bot directory and run:
+
+    ```bash
+    npm install
+    ```
+  </Step>
+
+  <Step title="Configure Environment">
+    Create a `.env` file in the root directory:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Open `.env` and add your bot token:
+
+    ```bash
+    DISCORD_TOKEN=your_token_here
+    ```
+
+    <Warning>
+      Replace `your_token_here` with the actual token you copied earlier.
+    </Warning>
+  </Step>
+
+  <Step title="Deploy Slash Commands">
+    Register the bot's slash commands with Discord:
+
+    ```bash
+    npm run deploy
+    ```
+
+    <Tip>
+      You only need to run this once, or whenever you update the bot's commands.
+    </Tip>
+  </Step>
+
+  <Step title="Start the Bot">
+    Run the bot:
+
+    ```bash
+    npm start
+    ```
+
+    For development with hot reload:
+
+    ```bash
+    npm run dev
+    ```
+  </Step>
+
+  <Step title="Verify Bot is Online">
+    Check your Discord server - the bot should now appear online!
+
+    Test it with `/ping` to verify it's responding to commands.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Adding Streamers" icon="user-plus" href="/guides/adding-streamers">
+    Learn how to add streamers and configure alerts
+  </Card>
+  <Card title="Managing Alerts" icon="bell" href="/guides/managing-alerts">
+    Manage your streamer list and notifications
+  </Card>
+</CardGroup>
+
+## Keeping the Bot Running 24/7
+
+For production use, consider hosting your bot on:
+
+- **VPS** (DigitalOcean, Linode, AWS EC2)
+- **Cloud Platforms** (Heroku, Railway, Render)
+- **Process Managers** (PM2, systemd)
+
+<Tip>
+  Use PM2 to keep your bot running automatically:
+  
+  ```bash
+  npm install -g pm2
+  pm2 start npm --name "streamer-bot" -- start
+  pm2 save
+  pm2 startup
+  ```
+</Tip>

@@ -1,0 +1,102 @@
+---
+title: Introduction
+description: A modern, type-safe Discord bot that monitors streaming platforms and sends beautiful notifications when your favorite streamers go live
+---
+
+<img
+  className="block"
+  src="https://github.com/user-attachments/assets/2e6d46d8-d03d-4795-a1ee-2c88baac673c"
+  alt="Streamer Alerts Bot notification example"
+/>
+
+## Overview
+
+Streamer Alerts Bot is a modern Discord bot built with TypeScript and discord.js v14 that monitors multiple streaming platforms and sends beautiful, real-time notifications when your favorite streamers go live.
+
+<Note>
+  **No API keys required** - The bot uses public endpoints and HTML parsing to fetch live status, so you can get started immediately without registering for platform APIs.
+</Note>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Multi-platform support" icon="tower-broadcast">
+    Monitor streamers across Kick, Twitch, YouTube, Rumble, and TikTok from a single bot
+  </Card>
+  <Card title="Real-time alerts" icon="bolt">
+    60-second polling with smart duplicate detection ensures you never miss a stream
+  </Card>
+  <Card title="Modern Discord UI" icon="sparkles">
+    Beautiful embeds with buttons, select menus, and interactive components
+  </Card>
+  <Card title="Type-safe" icon="shield-check">
+    Built with full TypeScript and strict typing for reliability
+  </Card>
+  <Card title="Zero configuration" icon="gauge-high">
+    Enmap handles persistence automatically - no database setup required
+  </Card>
+  <Card title="Per-server config" icon="server">
+    Each Discord server manages its own streamer list and notification channels
+  </Card>
+</CardGroup>
+
+## Supported platforms
+
+The bot supports five major streaming platforms:
+
+| Platform | Color | Emoji |
+| -------- | ----- | ----- |
+| Kick | `#53FC18` | 🟢 |
+| Twitch | `#9146FF` | 🟣 |
+| YouTube | `#FF0000` | 🔴 |
+| Rumble | `#85C742` | 🟢 |
+| TikTok | `#010101` | ⚫ |
+
+## Available commands
+
+The bot uses Discord's slash commands for a modern, intuitive experience:
+
+- `/streamer add` - Add a streamer to track (requires Manage Channels permission)
+- `/streamer remove` - Remove a tracked streamer (requires Manage Channels permission)
+- `/streamer list` - List all tracked streamers with live status
+- `/help` - Interactive help menu with detailed information
+- `/ping` - Check bot latency and connection status
+
+## How it works
+
+The bot operates on a simple polling loop that checks streamer status every 60 seconds:
+
+```
+Every 60 seconds:
+├── For each guild
+│   ├── Get tracked streamers from Enmap
+│   ├── For each streamer
+│   │   ├── Call platform checker
+│   │   ├── Compare title with cache
+│   │   ├── If live + new title → Send alert
+│   │   └── Update streamer data
+│   └── Save to Enmap
+```
+
+When a streamer goes live, the bot sends a rich embed notification with:
+
+- Platform-specific branding and colors
+- Stream title and game/category
+- Viewer count, follower count, and stream start time
+- Stream preview thumbnail
+- Direct link button to watch the stream
+
+## Getting started
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Set up the bot with Node.js and Discord credentials
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Configure environment variables and Discord permissions
+  </Card>
+</CardGroup>
+
+<Warning>
+  **Disclaimer:** The APIs used in this bot are not owned or maintained by us. Usage is at your own risk, and we make no guarantees regarding availability, accuracy, or functionality of these services.
+</Warning>

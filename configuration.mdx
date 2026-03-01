@@ -1,0 +1,291 @@
+---
+title: Configuration
+description: Configure environment variables and Discord permissions for Streamer Alerts Bot
+---
+
+## Environment variables
+
+The bot uses environment variables for configuration. All variables should be defined in a `.env` file in the root directory.
+
+### Required variables
+
+<Note>
+  The bot will not start without these variables. It validates their presence on startup in `src/index.ts`.
+</Note>
+
+#### DISCORD_TOKEN
+
+Your Discord bot token from the [Discord Developer Portal](https://discord.com/developers/applications).
+
+```bash .env
+DISCORD_TOKEN=your_bot_token_here
+```
+
+<Warning>
+  Never commit your bot token to version control. Keep `.env` in your `.gitignore` file.
+</Warning>
+
+The bot validates this token on startup:
+
+```typescript src/index.ts
+const token = process.env.DISCORD_TOKEN;
+
+if (!token) {
+  logger.error("DISCORD_TOKEN is not set in environment variables");
+  process.exit(1);
+}
+```
+
+#### CLIENT_ID
+
+Your Discord application's client ID, required for deploying slash commands.
+
+```bash .env
+CLIENT_ID=your_client_id_here
+```
+
+To find your client ID:
+
+<Steps>
+  <Step title="Open Developer Portal">
+    Go to [discord.com/developers/applications](https://discord.com/developers/applications)
+  </Step>
+  
+  <Step title="Select your application">
+    Click on your bot application
+  </Step>
+  
+  <Step title="Copy Application ID">
+    On the "General Information" page, copy the "Application ID"
+  </Step>
+</Steps>
+
+### Optional variables
+
+#### GUILD_ID
+
+A Discord server (guild) ID for testing. When set, commands deploy instantly to this guild instead of globally.
+
+```bash .env
+GUILD_ID=123456789012345678
+```
+
+<Note>
+  **Global vs Guild deployment:**
+  - Guild deployment: Instant, but commands only work in the specified server
+  - Global deployment: Takes up to 1 hour to propagate, but works in all servers
+  
+  Use `GUILD_ID` during development, then remove it for production.
+</Note>
+
+To find your guild ID:
+
+<Steps>
+  <Step title="Enable Developer Mode">
+    In Discord, go to User Settings > Advanced > Enable "Developer Mode"
+  </Step>
+  
+  <Step title="Copy Server ID">
+    Right-click your server icon and select "Copy Server ID"
+  </Step>
+</Steps>
+
+### Environment file example
+
+Your complete `.env` file should look like this:
+
+```bash .env
+# Discord Bot Token (required)
+DISCORD_TOKEN=your_bot_token_here
+
+# Discord Application ID (required for command deployment)
+CLIENT_ID=your_client_id_here
+
+# Optional: Guild ID for testing (deploys commands instantly to this guild)
+# Leave empty for global deployment (takes up to 1 hour to propagate)
+GUILD_ID=
+```
+
+## Discord permissions
+
+The bot requires specific permissions to function properly.
+
+### Gateway Intents
+
+Enable these intents in the Discord Developer Portal under Bot > Privileged Gateway Intents:
+
+<CardGroup cols={2}>
+  <Card title="Guilds" icon="server">
+    Required to receive guild events and access server information
+  </Card>
+  <Card title="Guild Messages" icon="message">
+    Required to send notifications and interact with channels
+  </Card>
+</CardGroup>
+
+### Bot Permissions
+
+When generating an invite link, ensure these permissions are selected:
+
+| Permission | Required | Purpose |
+| --- | --- | --- |
+| Send Messages | Yes | Send stream notifications |
+| Embed Links | Yes | Display rich stream embeds |
+| Use External Emojis | Yes | Show platform emojis (🟢 🟣 🔴) |
+
+<Note>
+  The minimum permission integer is `18432` (Send Messages + Embed Links + Use External Emojis)
+</Note>
+
+### Command Permissions
+
+Some commands require elevated permissions:
+
+| Command | Required Permission | Purpose |
+| --- | --- | --- |
+| `/streamer add` | Manage Channels | Prevents non-moderators from adding streamers |
+| `/streamer remove` | Manage Channels | Prevents non-moderators from removing streamers |
+| `/streamer list` | None | Anyone can view tracked streamers |
+| `/help` | None | Anyone can access help |
+| `/ping` | None | Anyone can check bot status |
+
+<Warning>
+  Users with "Manage Channels" permission can add/remove streamers. Configure Discord roles carefully to control who can manage the bot.
+</Warning>
+
+## Bot invite URL
+
+Generate an invite URL with the correct permissions:
+
+<Steps>
+  <Step title="Open OAuth2 URL Generator">
+    In the Discord Developer Portal, navigate to OAuth2 > URL Generator
+  </Step>
+  
+  <Step title="Select scopes">
+    Check these boxes:
+    - `bot`
+    - `applications.commands`
+  </Step>
+  
+  <Step title="Select permissions">
+    Check these boxes:
+    - Send Messages
+    - Embed Links
+    - Use External Emojis
+  </Step>
+  
+  <Step title="Copy and share URL">
+    Copy the generated URL at the bottom and use it to invite the bot to servers
+  </Step>
+</Steps>
+
+Your invite URL will look like:
+
+```
+https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=18432&scope=bot%20applications.commands
+```
+
+## Data storage
+
+The bot uses Enmap for persistent storage with zero configuration required.
+
+<Note>
+  **No database setup needed** - Enmap automatically creates and manages local database files.
+</Note>
+
+### Stored data
+
+The bot stores the following data per Discord server:
+
+- Tracked streamers (username, platform, notification channel)
+- Live status cache (current stream title, viewer count)
+- Last alert timestamp (prevents duplicate notifications)
+
+### Data location
+
+Enmap creates a `data` directory in the bot's root folder with SQLite databases:
+
+```
+streamer-alerts-bot/
+├── data/
+│   └── streamers.sqlite
+├── src/
+├── .env
+└── package.json
+```
+
+<Warning>
+  Back up the `data` directory regularly to prevent data loss.
+</Warning>
+
+## Advanced configuration
+
+### Polling interval
+
+The bot checks streamer status every 60 seconds by default. This is hardcoded in the polling loop.
+
+To adjust the interval, modify the polling implementation in the codebase:
+
+```typescript
+// Check every 60 seconds (60000ms)
+setInterval(checkStreamers, 60000);
+```
+
+<Note>
+  Shorter intervals provide faster alerts but increase API request load. 60 seconds is recommended for reliability.
+</Note>
+
+### Error handling
+
+The bot includes global error handlers that log errors and prevent crashes:
+
+```typescript src/index.ts
+process.on("uncaughtException", (error) => {
+  logger.error("Uncaught exception:", error);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error("Unhandled rejection:", reason);
+});
+```
+
+## Production deployment
+
+For production environments:
+
+<Steps>
+  <Step title="Use a process manager">
+    Run the bot with PM2 or similar to ensure automatic restarts:
+    
+    ```bash
+    npm install -g pm2
+    pm2 start dist/index.js --name streamer-alerts
+    pm2 save
+    pm2 startup
+    ```
+  </Step>
+  
+  <Step title="Remove GUILD_ID">
+    Set `GUILD_ID=` to empty in `.env` for global command deployment
+  </Step>
+  
+  <Step title="Enable logging">
+    Configure log output to a file or logging service for monitoring
+  </Step>
+  
+  <Step title="Secure environment variables">
+    Ensure `.env` has restricted file permissions:
+    
+    ```bash
+    chmod 600 .env
+    ```
+  </Step>
+</Steps>
+
+## Next steps
+
+<Card title="Usage guide" icon="book">
+  Learn how to use bot commands and manage streamer notifications
+</Card>

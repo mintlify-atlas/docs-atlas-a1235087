@@ -1,0 +1,446 @@
+---
+title: 'Platforms'
+description: 'Platform checker functions and configuration for streaming platforms'
+---
+
+## Overview
+
+The platforms module provides live status checking for Kick, Twitch, YouTube, Rumble, and TikTok streamers.
+
+```typescript
+import {
+  getChecker,
+  getPlatformConfig,
+  isPlatformSupported,
+  checkKickLive,
+  checkTwitchLive,
+  checkYouTubeLive,
+  checkRumbleLive,
+  checkTikTokLive,
+} from './platforms/index.js';
+```
+
+---
+
+## Platform Checkers
+
+### getChecker()
+
+Get the checker function for a specific platform.
+
+```typescript
+import { getChecker } from './platforms/index.js';
+
+const checker = getChecker('twitch');
+const status = await checker('xqc');
+```
+
+**Signature:**
+```typescript
+function getChecker(platform: Platform): PlatformChecker
+```
+
+<ParamField path="platform" type="Platform" required>
+  Platform name: `"kick"`, `"twitch"`, `"youtube"`, `"rumble"`, or `"tiktok"`
+</ParamField>
+
+<ResponseField name="return" type="PlatformChecker">
+  Function that accepts a username and returns a Promise of LiveStatus.
+</ResponseField>
+
+---
+
+### getPlatformConfig()
+
+Get full configuration for a platform including name, color, emoji, and checker.
+
+```typescript
+const config = getPlatformConfig('kick');
+console.log(config.name); // "Kick"
+console.log(config.emoji); // "🟢"
+```
+
+**Signature:**
+```typescript
+function getPlatformConfig(platform: Platform): PlatformConfig
+```
+
+<ParamField path="platform" type="Platform" required>
+  Platform name to get config for.
+</ParamField>
+
+<ResponseField name="return" type="PlatformConfig">
+  Platform configuration object.
+  
+  <Expandable title="PlatformConfig properties">
+    <ResponseField name="name" type="string">
+      Display name (e.g., "Twitch", "YouTube")
+    </ResponseField>
+    
+    <ResponseField name="color" type="number">
+      Embed color as hex number (e.g., `0x9146FF` for Twitch purple)
+    </ResponseField>
+    
+    <ResponseField name="emoji" type="string">
+      Platform emoji for UI display
+    </ResponseField>
+    
+    <ResponseField name="urlTemplate" type="string">
+      URL template with `{username}` placeholder
+    </ResponseField>
+    
+    <ResponseField name="checker" type="PlatformChecker">
+      The platform's live status checker function
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+### isPlatformSupported()
+
+Type guard to check if a string is a supported platform.
+
+```typescript
+const userInput = 'twitch';
+if (isPlatformSupported(userInput)) {
+  // userInput is now typed as Platform
+  const checker = getChecker(userInput);
+}
+```
+
+**Signature:**
+```typescript
+function isPlatformSupported(platform: string): platform is Platform
+```
+
+<ParamField path="platform" type="string" required>
+  String to check.
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  `true` if the platform is supported, `false` otherwise.
+</ResponseField>
+
+---
+
+## Individual Platform Checkers
+
+All platform checkers follow the same signature:
+
+```typescript
+type PlatformChecker = (username: string) => Promise<LiveStatus>
+```
+
+### checkKickLive()
+
+Check if a Kick streamer is live via the Kick API v2.
+
+```typescript
+import { checkKickLive } from './platforms/kick.js';
+
+const status = await checkKickLive('trainwreckstv');
+if (status.isLive) {
+  console.log(`${status.username} is live: ${status.title}`);
+}
+```
+
+**Signature:**
+```typescript
+async function checkKickLive(username: string): Promise<LiveStatus>
+```
+
+<ParamField path="username" type="string" required>
+  Kick username (case-insensitive)
+</ParamField>
+
+**API Endpoint:** `https://kick.com/api/v2/channels/{username}`
+
+**Returns:**
+<ResponseField name="LiveStatus" type="object">
+  <Expandable title="LiveStatus fields">
+    <ResponseField name="isLive" type="boolean">
+      Whether the streamer is currently live
+    </ResponseField>
+    
+    <ResponseField name="platform" type="'kick'">
+      Always `"kick"`
+    </ResponseField>
+    
+    <ResponseField name="username" type="string">
+      Streamer username
+    </ResponseField>
+    
+    <ResponseField name="url" type="string">
+      Stream URL (e.g., `https://kick.com/trainwreckstv`)
+    </ResponseField>
+    
+    <ResponseField name="title" type="string | undefined">
+      Stream title/session title (only when live)
+    </ResponseField>
+    
+    <ResponseField name="viewers" type="number | undefined">
+      Current viewer count (only when live)
+    </ResponseField>
+    
+    <ResponseField name="followers" type="number | undefined">
+      Channel follower count
+    </ResponseField>
+    
+    <ResponseField name="profileImage" type="string | undefined">
+      Profile picture URL
+    </ResponseField>
+    
+    <ResponseField name="verified" type="boolean | undefined">
+      Whether the channel is verified
+    </ResponseField>
+    
+    <ResponseField name="category" type="string | undefined">
+      Game/category name (only when live)
+    </ResponseField>
+    
+    <ResponseField name="categoryIcon" type="string | undefined">
+      Category banner image URL
+    </ResponseField>
+    
+    <ResponseField name="tags" type="string[] | undefined">
+      Stream tags
+    </ResponseField>
+    
+    <ResponseField name="language" type="string | undefined">
+      Stream language code
+    </ResponseField>
+    
+    <ResponseField name="isMature" type="boolean | undefined">
+      Whether stream is marked as mature
+    </ResponseField>
+    
+    <ResponseField name="error" type="string | undefined">
+      Error message if check failed
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example:**
+```typescript
+const status = await checkKickLive('trainwreckstv');
+
+if (status.error) {
+  console.error(`Error: ${status.error}`);
+} else if (status.isLive) {
+  console.log(`Live: ${status.title}`);
+  console.log(`Viewers: ${status.viewers}`);
+  console.log(`Category: ${status.category}`);
+} else {
+  console.log('Not currently live');
+}
+```
+
+---
+
+### checkTwitchLive()
+
+Check if a Twitch streamer is live via the Twitch GraphQL API.
+
+```typescript
+import { checkTwitchLive } from './platforms/twitch.js';
+
+const status = await checkTwitchLive('xqc');
+```
+
+**Signature:**
+```typescript
+async function checkTwitchLive(username: string): Promise<LiveStatus>
+```
+
+<ParamField path="username" type="string" required>
+  Twitch username (case-insensitive)
+</ParamField>
+
+**API Endpoint:** `https://gql.twitch.tv/gql`
+
+**Returns:** Same `LiveStatus` structure as Kick, with platform set to `"twitch"`
+
+**Additional Fields:**
+- `verified`: `true` for Twitch Partners
+- `bio`: User's channel description
+- `category`: Game name
+- `categoryIcon`: Game box art URL (144x192)
+- `thumbnail`: Stream preview image (640x360)
+
+**Example:**
+```typescript
+const status = await checkTwitchLive('xqc');
+
+if (status.isLive) {
+  console.log(`${status.username} is live!`);
+  console.log(`Title: ${status.title}`);
+  console.log(`Game: ${status.category}`);
+  console.log(`Viewers: ${status.viewers?.toLocaleString()}`);
+  console.log(`Partner: ${status.verified}`);
+}
+```
+
+---
+
+### checkYouTubeLive()
+
+Check if a YouTube channel is live by parsing the `/live` page.
+
+```typescript
+import { checkYouTubeLive } from './platforms/youtube.js';
+
+const status = await checkYouTubeLive('ludwig');
+```
+
+**Signature:**
+```typescript
+async function checkYouTubeLive(username: string): Promise<LiveStatus>
+```
+
+<ParamField path="username" type="string" required>
+  YouTube channel handle (without @ symbol)
+</ParamField>
+
+**Fetches:** `https://www.youtube.com/@{username}/live`
+
+**Returns:** Same `LiveStatus` structure with platform set to `"youtube"`
+
+**Notes:**
+- Automatically redirects to active stream if live
+- Parses `ytInitialData` from page HTML
+- Extracts video ID for thumbnail generation
+- Returns subscriber count as `followers`
+
+**Example:**
+```typescript
+const status = await checkYouTubeLive('ludwig');
+
+if (status.isLive) {
+  console.log(`${status.username} is streaming!`);
+  console.log(`Title: ${status.title}`);
+  console.log(`Watching: ${status.viewers}`);
+  console.log(`Subscribers: ${status.followers?.toLocaleString()}`);
+  console.log(`Thumbnail: ${status.thumbnail}`);
+}
+```
+
+---
+
+### checkRumbleLive()
+
+Check if a Rumble streamer is live via HTML scraping.
+
+```typescript
+import { checkRumbleLive } from './platforms/rumble.js';
+
+const status = await checkRumbleLive('TimPool');
+```
+
+**Signature:**
+```typescript
+async function checkRumbleLive(username: string): Promise<LiveStatus>
+```
+
+<ParamField path="username" type="string" required>
+  Rumble channel name
+</ParamField>
+
+**Fetches:** `https://rumble.com/c/{username}`
+
+**Returns:** Same `LiveStatus` structure with platform set to `"rumble"`
+
+**Detection:**
+- Checks for `videostream__status--live` or `thumbnail__thumb--live` classes
+- Extracts viewer count from `videostream__views-ppv` badge
+- Parses follower count from page header
+
+**Example:**
+```typescript
+const status = await checkRumbleLive('TimPool');
+
+if (status.isLive) {
+  console.log(`Live on Rumble: ${status.title}`);
+  console.log(`Viewers: ${status.viewers}`);
+  console.log(`Verified: ${status.verified}`);
+}
+```
+
+---
+
+### checkTikTokLive()
+
+Check if a TikTok user is live by parsing SIGI_STATE data.
+
+```typescript
+import { checkTikTokLive } from './platforms/tiktok.js';
+
+const status = await checkTikTokLive('username');
+```
+
+**Signature:**
+```typescript
+async function checkTikTokLive(username: string): Promise<LiveStatus>
+```
+
+<ParamField path="username" type="string" required>
+  TikTok username (without @ symbol)
+</ParamField>
+
+**Fetches:** `https://www.tiktok.com/@{username}/live`
+
+**Returns:** Same `LiveStatus` structure with platform set to `"tiktok"`
+
+**Detection:**
+- Extracts SIGI_STATE JSON from script tag
+- Checks `liveRoom.status === 2` for live status
+- Returns follower count and profile data even when offline
+
+**Example:**
+```typescript
+const status = await checkTikTokLive('someuser');
+
+if (status.isLive) {
+  console.log(`${status.username} is live on TikTok!`);
+  console.log(`Title: ${status.title}`);
+  console.log(`Viewers: ${status.viewers}`);
+  console.log(`Followers: ${status.followers?.toLocaleString()}`);
+}
+```
+
+---
+
+## Platform Constants
+
+The checker registry is exported as:
+
+```typescript
+export const platformCheckers: Record<Platform, PlatformChecker> = {
+  kick: checkKickLive,
+  twitch: checkTwitchLive,
+  youtube: checkYouTubeLive,
+  rumble: checkRumbleLive,
+  tiktok: checkTikTokLive,
+};
+```
+
+---
+
+## Error Handling
+
+All checkers handle errors gracefully:
+
+```typescript
+const status = await checkTwitchLive('invalid_user');
+
+if (status.error) {
+  console.error(`Check failed: ${status.error}`);
+  // Status will have isLive: false and basic info
+}
+```
+
+**Error scenarios:**
+- User not found: Returns `isLive: false` with no error
+- Network errors: Returns `isLive: false` with `error` field
+- API errors: Returns `isLive: false` with error message
+- HTTP 404: Returns `isLive: false` with no error

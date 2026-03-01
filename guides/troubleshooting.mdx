@@ -1,0 +1,548 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for the Streamer Alerts Bot
+---
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Bot is offline or not responding">
+    **Symptoms:**
+    - Bot shows as offline in Discord
+    - Commands don't autocomplete
+    - No response to `/ping`
+
+    **Solutions:**
+
+    1. **Check if the bot is running**
+       ```bash
+       # If using npm start
+       ps aux | grep node
+       
+       # If using PM2
+       pm2 list
+       ```
+
+    2. **Verify the bot token**
+       - Check `.env` file has the correct token
+       - Token should start with `M` or `N` and be ~70 characters
+       - No extra spaces or quotes around the token
+
+    3. **Check for errors in console**
+       ```bash
+       # View logs if using PM2
+       pm2 logs streamer-bot
+       ```
+
+    4. **Restart the bot**
+       ```bash
+       # Standard
+       npm start
+       
+       # PM2
+       pm2 restart streamer-bot
+       ```
+
+    <Warning>
+      If you recently regenerated your bot token in Discord Developer Portal, you must update the `.env` file with the new token.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Commands not appearing / slash commands don't work">
+    **Symptoms:**
+    - Can't see `/streamer` or other commands
+    - Commands don't autocomplete when typing `/`
+
+    **Solutions:**
+
+    1. **Deploy slash commands**
+       ```bash
+       npm run deploy
+       ```
+       
+       This registers all commands with Discord.
+
+    2. **Wait for command propagation**
+       - Global commands can take up to 1 hour to appear
+       - Server commands appear instantly
+
+    3. **Verify bot permissions**
+       - Bot needs `applications.commands` scope
+       - Re-invite bot with correct OAuth2 URL if missing
+
+    4. **Check application ID**
+       - Ensure client ID in deploy script matches your bot
+
+    <Note>
+      If you see old commands that no longer exist, they may be cached. Wait a few minutes or kick and re-invite the bot.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Not receiving live alerts">
+    **Symptoms:**
+    - Streamer goes live but no alert is posted
+    - Some alerts work, others don't
+
+    **Diagnosis:**
+
+    1. **Verify streamer is added**
+       ```bash
+       /streamer list
+       ```
+       Check the streamer appears in the list.
+
+    2. **Check bot permissions in notification channel**
+       
+       Required permissions:
+       - ✅ View Channel
+       - ✅ Send Messages
+       - ✅ Embed Links
+       - ✅ Use External Emojis
+
+    3. **Verify username spelling**
+       - Username must exactly match the platform username
+       - Check for typos, underscores, or special characters
+
+    4. **Check bot console for errors**
+       ```bash
+       # Look for fetch errors or API issues
+       pm2 logs streamer-bot --lines 100
+       ```
+
+    **Platform-Specific Issues:**
+
+    - **Twitch**: Ensure username is correct (not display name)
+    - **YouTube**: Use channel handle (e.g., `@mrbeast`)
+    - **Kick**: Some new channels may not be indexed yet
+    - **TikTok**: Only works for TikTok Live, not regular videos
+
+    <Tip>
+      The bot polls every 60 seconds. Wait 1-2 minutes after a stream starts to receive the alert.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Duplicate alerts for the same stream">
+    **Symptoms:**
+    - Multiple alerts sent for one stream
+    - Alert repeats every minute
+
+    **Causes:**
+
+    1. **Streamer changed stream title**
+       - Bot treats title changes as new streams
+       - This is intentional to catch stream restarts
+
+    2. **Platform API instability**
+       - Temporary glitches may cause false positives
+       - Usually resolves within a few cycles
+
+    3. **Multiple bots tracking same streamer**
+       - Check if you have multiple instances running
+       - Different bots in the same server will both alert
+
+    **Solutions:**
+
+    - Wait a few minutes - duplicates usually stop
+    - Restart the bot to clear cache:
+       ```bash
+       pm2 restart streamer-bot
+       ```
+
+    <Warning>
+      Restarting the bot clears the title cache, which may cause duplicate alerts for currently live streamers.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Error: 'This command can only be used in a server'">
+    **Cause:**
+    - Trying to use commands in DMs with the bot
+
+    **Solution:**
+    - All `/streamer` commands must be used in a Discord server
+    - The bot doesn't support DM commands
+
+    <Note>
+      This is intentional - streamer alerts are server-specific features.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Error: 'Missing Permissions'">
+    **Symptoms:**
+    - "You need Manage Channels permission" error
+
+    **Affected Commands:**
+    - `/streamer add`
+    - `/streamer remove`
+
+    **Solution:**
+
+    1. **Check your Discord role permissions**
+       - You need **Manage Channels** permission
+       - Server administrators have this by default
+
+    2. **Ask a server admin to:**
+       - Grant you Manage Channels permission, or
+       - Add/remove streamers for you
+
+    <Note>
+      `/streamer list` requires no special permissions - anyone can view the list.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Error: 'Already Tracking'">
+    **Message:**
+    ```
+    ❌ Already Tracking
+    
+    [username] on [platform] is already being tracked.
+    ```
+
+    **Cause:**
+    - Streamer is already in your server's tracking list
+
+    **Solutions:**
+
+    1. **View current tracking**
+       ```bash
+       /streamer list
+       ```
+
+    2. **To change notification channel:**
+       ```bash
+       # Remove first
+       /streamer remove
+       
+       # Then re-add with new channel
+       /streamer add platform:twitch username:streamer
+       ```
+
+    3. **Different platform?**
+       - You can track the same person on multiple platforms
+       - Example: `twitch/shroud` and `youtube/@shroud` are separate
+  </Accordion>
+
+  <Accordion title="Error: 'No Streamers'">
+    **Message:**
+    ```
+    ❌ No Streamers
+    
+    No streamers are being tracked.
+    Use /streamer add to add a streamer.
+    ```
+
+    **Cause:**
+    - Trying to use `/streamer remove` when no streamers are tracked
+
+    **Solution:**
+    - Add streamers first:
+       ```bash
+       /streamer add platform:twitch username:shroud
+       ```
+  </Accordion>
+
+  <Accordion title="Pagination buttons not working">
+    **Symptoms:**
+    - Clicking **Next ▶** or **◀ Prev** does nothing
+    - Buttons are grayed out when they shouldn't be
+
+    **Solutions:**
+
+    1. **Interaction timeout**
+       - Discord interactions expire after 15 minutes
+       - Run `/streamer list` again to refresh
+
+    2. **Bot restart**
+       - If bot restarted, old button interactions won't work
+       - Run the command again
+
+    <Note>
+      Pagination only appears when you have more than 10 tracked streamers.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Bot spamming or rate limited">
+    **Symptoms:**
+    - Console shows rate limit errors
+    - Discord API 429 errors
+    - Some alerts missing
+
+    **Causes:**
+    - Tracking too many streamers (100+)
+    - Multiple bot instances running
+    - Platform API blocking requests
+
+    **Solutions:**
+
+    1. **Reduce streamer count**
+       - Remove inactive streamers
+       - Spread across multiple bot instances
+
+    2. **Check for multiple instances**
+       ```bash
+       ps aux | grep node
+       # Kill duplicate processes
+       ```
+
+    3. **Increase polling interval (advanced)**
+       - Edit source code to change from 60s to 120s
+       - Located in main bot file
+
+    <Warning>
+      Running multiple instances of the same bot will cause duplicate alerts and rate limiting.
+    </Warning>
+  </Accordion>
+</AccordionGroup>
+
+## Installation Issues
+
+<AccordionGroup>
+  <Accordion title="npm install fails">
+    **Common errors:**
+
+    ```bash
+    # Node version too old
+    npm ERR! engine Unsupported engine
+    ```
+
+    **Solution:**
+    ```bash
+    # Check Node.js version
+    node --version
+    
+    # Requires Node.js v18 or higher
+    # Update Node.js: https://nodejs.org/
+    ```
+
+    ---
+
+    ```bash
+    # Permission errors on Linux/Mac
+    npm ERR! EACCES: permission denied
+    ```
+
+    **Solution:**
+    ```bash
+    # Use nvm (recommended)
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+    nvm install 18
+    nvm use 18
+    
+    # Or use sudo (not recommended)
+    sudo npm install
+    ```
+  </Accordion>
+
+  <Accordion title="TypeScript compilation errors">
+    **Symptoms:**
+    ```bash
+    npm run build
+    # Shows type errors
+    ```
+
+    **Solutions:**
+
+    1. **Clean rebuild**
+       ```bash
+       rm -rf node_modules dist
+       npm install
+       npm run build
+       ```
+
+    2. **Check TypeScript version**
+       ```bash
+       npx tsc --version
+       # Should be 5.x or higher
+       ```
+
+    3. **Verify source code**
+       - Ensure you have the latest version
+       - Check for modified files
+  </Accordion>
+
+  <Accordion title=".env file not found">
+    **Error:**
+    ```
+    Error: Cannot find module '.env'
+    ```
+
+    **Solution:**
+    ```bash
+    # Copy example file
+    cp .env.example .env
+    
+    # Edit with your token
+    nano .env
+    ```
+
+    **Contents should be:**
+    ```bash
+    DISCORD_TOKEN=your_actual_token_here
+    ```
+
+    <Warning>
+      The `.env` file must be in the root directory of the bot, not in `src/` or any subdirectory.
+    </Warning>
+  </Accordion>
+</AccordionGroup>
+
+## Platform-Specific Issues
+
+<AccordionGroup>
+  <Accordion title="Twitch streamers not detected">
+    **Possible causes:**
+
+    1. **Incorrect username**
+       - Use Twitch username, not display name
+       - Example: `xqc` not `xQc` (bot converts to lowercase)
+
+    2. **Suspended or banned channel**
+       - Bot can't access suspended channels
+
+    3. **Twitch API changes**
+       - Public endpoints may change
+       - Check bot console for fetch errors
+  </Accordion>
+
+  <Accordion title="YouTube channels not working">
+    **Solutions:**
+
+    1. **Use channel handle**
+       ```bash
+       # Correct
+       /streamer add platform:youtube username:@mrbeast
+       
+       # Also works without @
+       /streamer add platform:youtube username:mrbeast
+       ```
+
+    2. **Channel ID vs Handle**
+       - Handles work best (e.g., `@username`)
+       - Channel IDs may not work with public endpoints
+
+    3. **Private channels**
+       - Bot can't access members-only or private streams
+  </Accordion>
+
+  <Accordion title="Kick/Rumble/TikTok issues">
+    **General troubleshooting:**
+
+    1. **Platform availability**
+       - These platforms may have less stable APIs
+       - Outages are more common
+
+    2. **New channels**
+       - Very new channels may not be indexed
+       - Wait 24-48 hours after channel creation
+
+    3. **Regional restrictions**
+       - Some content may be geo-blocked
+       - Bot server location affects access
+
+    <Note>
+      The bot uses web scraping for platforms without public APIs. Website changes can break functionality temporarily.
+    </Note>
+  </Accordion>
+</AccordionGroup>
+
+## Advanced Debugging
+
+### Enable Debug Logging
+
+```bash
+# Set environment variable
+export DEBUG=*
+npm start
+
+# Or in .env file
+DEBUG=*
+```
+
+### Check Bot Logs
+
+```bash
+# PM2 logs
+pm2 logs streamer-bot --lines 200
+
+# Real-time logs
+pm2 logs streamer-bot --lines 0
+
+# Error logs only
+pm2 logs streamer-bot --err
+```
+
+### Test Individual Platform Checks
+
+You can manually test platform checkers in the code:
+
+```typescript
+// Example: Test Twitch checker
+import { checkTwitch } from './platforms/twitch';
+
+const status = await checkTwitch('shroud');
+console.log(status);
+```
+
+### Database Inspection
+
+The bot uses Enmap for storage. Data is in:
+
+```
+data/enmap.sqlite
+```
+
+You can inspect with any SQLite browser:
+
+```bash
+sqlite3 data/enmap.sqlite
+.tables
+SELECT * FROM streamers;
+```
+
+<Warning>
+  Manually editing the database can corrupt data. Always backup first.
+</Warning>
+
+## Getting Help
+
+If you're still experiencing issues:
+
+1. **Check the GitHub Issues**
+   - Search for similar problems
+   - Check if there's a known bug
+
+2. **Gather Information**
+   - Bot version
+   - Node.js version (`node --version`)
+   - Operating system
+   - Error messages (full stack trace)
+   - Steps to reproduce
+
+3. **Create a GitHub Issue**
+   - Provide all gathered information
+   - Include relevant code snippets
+   - Remove sensitive data (tokens, IDs)
+
+## Prevention Tips
+
+<Tip>
+  **Best practices to avoid issues:**
+
+  - Keep Node.js and npm updated
+  - Don't modify source code unless necessary
+  - Use PM2 for production deployments
+  - Monitor bot logs regularly
+  - Backup the `data/` directory weekly
+  - Test changes in a development server first
+  - Keep track of which streamers you've added
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Bot Setup" icon="robot" href="/guides/bot-setup">
+    Review bot installation and configuration
+  </Card>
+  <Card title="Adding Streamers" icon="user-plus" href="/guides/adding-streamers">
+    Learn how to properly add streamers
+  </Card>
+</CardGroup>

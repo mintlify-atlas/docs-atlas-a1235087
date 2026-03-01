@@ -1,0 +1,281 @@
+---
+title: Adding Streamers
+description: Step-by-step guide for adding streamers and configuring live alerts
+---
+
+## Overview
+
+The `/streamer add` command allows you to track streamers across multiple platforms and receive live notifications when they start streaming.
+
+## Supported Platforms
+
+The bot supports five major streaming platforms:
+
+| Platform | Emoji | Identifier |
+|----------|-------|------------|
+| Kick     | 🟢    | `kick`     |
+| Twitch   | 🟣    | `twitch`   |
+| YouTube  | 🔴    | `youtube`  |
+| Rumble   | 🟢    | `rumble`   |
+| TikTok   | ⚫    | `tiktok`   |
+
+<Note>
+  The bot uses public endpoints to check stream status - **no API keys required**!
+</Note>
+
+## Adding a Streamer
+
+<Steps>
+  <Step title="Run the Add Command">
+    Use the `/streamer add` command with the platform and username:
+
+    ```
+    /streamer add platform:twitch username:shroud
+    ```
+
+    <Tip>
+      You can include or omit the `@` symbol - the bot will clean it automatically.
+      
+      Both `@shroud` and `shroud` work the same way.
+    </Tip>
+  </Step>
+
+  <Step title="Select Notification Channel">
+    The bot will display an embed asking you to select a notification channel:
+
+    **Embed Preview:**
+    ```
+    🟣 Add Twitch Streamer
+    
+    Adding: shroud on Twitch
+    
+    Select the channel for notifications:
+    ```
+
+    Use the dropdown menu to choose where live alerts should be posted.
+
+    <Warning>
+      You can only select **text channels** or **announcement channels**. Voice channels are not supported.
+    </Warning>
+  </Step>
+
+  <Step title="Confirm Addition">
+    After selecting a channel, the bot will add the streamer and display a success message:
+
+    ```
+    ✅ Streamer Added
+    
+    Now tracking shroud on Twitch
+    Alerts will be sent to #stream-alerts
+    ```
+
+    The bot will start monitoring this streamer every 60 seconds!
+  </Step>
+</Steps>
+
+## Command Parameters
+
+### Platform
+
+Choose from the dropdown menu:
+- `kick` - Kick.com
+- `twitch` - Twitch.tv
+- `youtube` - YouTube
+- `rumble` - Rumble.com
+- `tiktok` - TikTok Live
+
+### Username
+
+The streamer's username or handle on the selected platform.
+
+**Examples:**
+```bash
+# Twitch
+/streamer add platform:twitch username:xqc
+
+# YouTube (use channel handle or @username)
+/streamer add platform:youtube username:@mrbeast
+
+# Kick
+/streamer add platform:kick username:trainwreckstv
+
+# TikTok
+/streamer add platform:tiktok username:khaby.lame
+```
+
+<Note>
+  Usernames are automatically converted to lowercase and trimmed of whitespace.
+</Note>
+
+## Understanding Live Alerts
+
+When a tracked streamer goes live, the bot sends a rich embed to the configured channel:
+
+### Alert Embed Contents
+
+- **Author Section**: Streamer name with profile picture and verification badge (✓)
+- **Title**: Stream title (e.g., "Building a Castle in Minecraft")
+- **Description**: Key stream info
+  - Category/Game being played
+  - Current viewer count
+  - Follower/subscriber count
+- **Fields**:
+  - Started time (relative, e.g., "2 hours ago")
+  - Language
+  - Mature content indicator (18+)
+  - Stream tags
+- **Thumbnail**: Live stream preview image
+- **Button**: "Watch on [Platform]" link button
+
+### Example Alert
+
+```
+┌─────────────────────────────────────────┐
+│ 🟣 shroud ✓ is LIVE                    │
+├─────────────────────────────────────────┤
+│ VALORANT RANKED - Road to Radiant      │
+│                                         │
+│ Playing: VALORANT                       │
+│ Viewers: 45,234 • Followers: 10.5M     │
+│                                         │
+│ Started        │ Language               │
+│ 2 hours ago    │ EN                     │
+│                                         │
+│ Tags: FPS • Competitive • Pro Player   │
+│                                         │
+│ [Stream Preview Image]                  │
+│                                         │
+│ [🟣 Watch on Twitch]                   │
+└─────────────────────────────────────────┘
+```
+
+## Duplicate Detection
+
+The bot prevents duplicate streamers:
+
+<Warning>
+  If you try to add a streamer that's already being tracked, you'll receive an error:
+  
+  ```
+  ❌ Already Tracking
+  
+  shroud on Twitch is already being tracked.
+  ```
+</Warning>
+
+Each streamer can only be added once per server, but you can:
+- Add the same streamer on different platforms
+- Add different streamers to different notification channels
+
+## Alert Polling System
+
+The bot checks stream status every **60 seconds** for all tracked streamers.
+
+### Smart Duplicate Prevention
+
+Alerts are only sent when:
+1. The streamer goes live (wasn't live before)
+2. The stream title changes (indicating a new stream session)
+
+This prevents spam from:
+- Temporary connection issues
+- Stream restarts
+- Platform glitches
+
+<Tip>
+  The bot caches the last stream title, so if a streamer ends and immediately starts a new stream with the same title, you won't get duplicate alerts.
+</Tip>
+
+## Permissions Required
+
+### For Users
+
+To use `/streamer add`, you need:
+- **Manage Channels** permission in the server
+
+### For the Bot
+
+The bot needs these permissions in the notification channel:
+- **View Channel** - To access the channel
+- **Send Messages** - To post alerts
+- **Embed Links** - To display rich embeds
+- **Use External Emojis** - To show platform emojis
+
+<Warning>
+  If the bot lacks permissions in the selected channel, alerts will fail silently. Always verify the bot has proper permissions!
+</Warning>
+
+## Common Use Cases
+
+### Single Notification Channel
+
+Send all alerts to one dedicated channel:
+
+```bash
+/streamer add platform:twitch username:pokimane
+# Select #stream-alerts
+
+/streamer add platform:youtube username:@valkyrae
+# Select #stream-alerts
+
+/streamer add platform:kick username:adin
+# Select #stream-alerts
+```
+
+### Platform-Specific Channels
+
+Separate channels for different platforms:
+
+```bash
+/streamer add platform:twitch username:xqc
+# Select #twitch-alerts
+
+/streamer add platform:youtube username:@mrbeast
+# Select #youtube-alerts
+```
+
+### Streamer-Specific Channels
+
+Dedicated channels for important streamers:
+
+```bash
+/streamer add platform:twitch username:ninja
+# Select #ninja-live
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="The bot says the streamer is already tracked">
+    Use `/streamer list` to see all tracked streamers. You may have already added this streamer, or someone else in your server did.
+    
+    To change the notification channel, first remove the streamer with `/streamer remove`, then add them again.
+  </Accordion>
+
+  <Accordion title="I added a streamer but not receiving alerts">
+    Check:
+    1. The bot has permissions in the notification channel
+    2. The username is spelled correctly
+    3. The streamer's profile is public and not private
+    4. The bot is running (use `/ping` to verify)
+  </Accordion>
+
+  <Accordion title="Can I add the same streamer to multiple channels?">
+    No, each streamer can only be tracked once per server. However, you can add the same person on different platforms (e.g., their Twitch and YouTube).
+  </Accordion>
+
+  <Accordion title="How quickly will I get notified?">
+    The bot checks every 60 seconds. You should receive an alert within 1-2 minutes of the streamer going live.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Managing Alerts" icon="list" href="/guides/managing-alerts">
+    View, manage, and remove tracked streamers
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/guides/troubleshooting">
+    Fix common issues and errors
+  </Card>
+</CardGroup>

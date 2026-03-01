@@ -1,0 +1,563 @@
+---
+title: Project Structure
+description: Directory structure and file organization of the Streamer Alerts Discord Bot
+---
+
+## Directory Tree
+
+```
+streamer-alerts-bot/
+├── src/
+│   ├── index.ts                    # Entry point
+│   ├── client/
+│   │   └── StreamerBot.ts          # Extended Discord client
+│   ├── commands/
+│   │   ├── index.ts                # Command registration
+│   │   ├── streamer/
+│   │   │   ├── add.ts              # /streamer add command
+│   │   │   ├── remove.ts           # /streamer remove command
+│   │   │   ├── list.ts             # /streamer list command
+│   │   │   └── index.ts            # Streamer subcommand group
+│   │   └── util/
+│   │       ├── help.ts             # /help command
+│   │       └── ping.ts             # /ping command
+│   ├── components/
+│   │   ├── buttons.ts              # Discord button components
+│   │   ├── embeds.ts               # Discord embed builders
+│   │   └── menus.ts                # Select menu components
+│   ├── database/
+│   │   └── index.ts                # JSON file database
+│   ├── events/
+│   │   ├── index.ts                # Event registration
+│   │   ├── ready.ts                # Ready event handler
+│   │   └── interactionCreate.ts   # Interaction handler
+│   ├── handlers/
+│   │   ├── buttons.ts              # Button interaction handlers
+│   │   └── selectMenus.ts          # Select menu handlers
+│   ├── platforms/
+│   │   ├── index.ts                # Platform checker registry
+│   │   ├── types.ts                # Platform type definitions
+│   │   ├── kick.ts                 # Kick platform checker
+│   │   ├── twitch.ts               # Twitch platform checker
+│   │   ├── youtube.ts              # YouTube platform checker
+│   │   ├── rumble.ts               # Rumble platform checker
+│   │   └── tiktok.ts               # TikTok platform checker
+│   ├── services/
+│   │   ├── AlertService.ts         # Alert sending service
+│   │   └── StreamPoller.ts         # Stream polling service
+│   ├── types/
+│   │   ├── index.ts                # Type exports
+│   │   ├── discord.ts              # Discord-related types
+│   │   └── streamer.ts             # Streamer data types
+│   └── utils/
+│       ├── constants.ts            # App constants and configs
+│       ├── formatters.ts           # Display formatters
+│       └── logger.ts               # Logging utility
+├── data/
+│   └── guilds.json                 # Persistent guild data
+├── dist/                           # Compiled JavaScript output
+├── .env                            # Environment variables
+├── .env.example                    # Example env file
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
+## Module Responsibilities
+
+### Entry Point
+
+#### `src/index.ts`
+
+Main application entry point that orchestrates bot startup.
+
+**Responsibilities:**
+- Validate environment variables (Discord token)
+- Create and configure the Discord client
+- Register commands and events
+- Login to Discord
+- Handle uncaught errors
+
+**Key Code:**
+```typescript
+async function main(): Promise<void> {
+  const token = process.env.DISCORD_TOKEN;
+  if (!token) {
+    logger.error("DISCORD_TOKEN is not set");
+    process.exit(1);
+  }
+
+  const client = createClient();
+  registerCommands(client);
+  registerEvents(client);
+  
+  await client.login(token);
+}
+```
+
+See: `~/workspace/source/src/index.ts`
+
+---
+
+### Client Layer
+
+#### `src/client/StreamerBot.ts`
+
+Extended Discord.js client with custom functionality.
+
+**Properties:**
+- `commands: Collection<string, Command>` - Registered slash commands
+
+**Methods:**
+- `updateActivity()` - Update bot status with streamer/server count
+- `startActivityRotation(intervalMs)` - Auto-refresh bot status
+- `registerCommand(command)` - Add command to collection
+- `getCommand(name)` - Retrieve command by name
+
+**Configuration:**
+```typescript
+new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+  partials: [Partials.Channel]
+})
+```
+
+See: `~/workspace/source/src/client/StreamerBot.ts:15-76`
+
+---
+
+### Commands
+
+Slash commands registered with Discord's application command system.
+
+#### `src/commands/streamer/add.ts`
+
+**Command:** `/streamer add <platform> <username>`
+
+**Flow:**
+1. Validate platform and username
+2. Fetch current stream status
+3. Show channel selector embed
+4. User selects notification channel
+5. Save streamer to database
+6. Show success embed
+
+**Permissions Required:** `ManageChannels`
+
+#### `src/commands/streamer/remove.ts`
+
+**Command:** `/streamer remove`
+
+**Flow:**
+1. Fetch guild's tracked streamers
+2. Show streamer selector menu
+3. User selects streamer to remove
+4. Show confirmation buttons (Yes/Cancel)
+5. Remove from database
+6. Show success embed
+
+**Permissions Required:** `ManageChannels`
+
+#### `src/commands/streamer/list.ts`
+
+**Command:** `/streamer list`
+
+**Flow:**
+1. Fetch all tracked streamers for guild
+2. Generate paginated embed (10 per page)
+3. Show navigation buttons if multiple pages
+4. Display: platform emoji, username, channel, live status
+
+**Permissions Required:** None
+
+#### `src/commands/util/help.ts`
+
+**Command:** `/help`
+
+Interactive help menu with platform selector showing supported streaming services.
+
+#### `src/commands/util/ping.ts`
+
+**Command:** `/ping`
+
+Shows bot latency (WebSocket heartbeat).
+
+<Info>
+All commands use **ephemeral responses** (visible only to command user) until final confirmation.
+</Info>
+
+---
+
+### Components
+
+Reusable Discord UI components.
+
+#### `src/components/embeds.ts`
+
+Embed builders for consistent styling:
+
+- `createLiveEmbed(status)` - Live alert embed with platform colors
+- `createSuccessEmbed(message)` - Green success message
+- `createErrorEmbed(message)` - Red error message
+- `createInfoEmbed(message)` - Blue informational message
+- `createStreamerListEmbed(streamers, page)` - Paginated list view
+
+#### `src/components/buttons.ts`
+
+Button components:
+
+- `createWatchButtonRow(url, platform)` - "Watch on [Platform]" link button
+- `createConfirmationButtons()` - Yes/Cancel action buttons
+- `createPaginationButtons(page, total)` - Previous/Next navigation
+
+#### `src/components/menus.ts`
+
+Select menu components:
+
+- `createChannelSelectMenu()` - Channel picker for notifications
+- `createStreamerSelectMenu(streamers)` - Streamer removal menu
+- `createPlatformSelectMenu()` - Help menu platform selector
+
+---
+
+### Database
+
+#### `src/database/index.ts`
+
+JSON file-based storage with in-memory cache.
+
+**Data Structure:**
+```json
+{
+  "guild_id_123": {
+    "streamers": [
+      {
+        "id": "twitch:xqc",
+        "platform": "twitch",
+        "username": "xqc",
+        "channelId": "channel_id_456",
+        "isLive": false,
+        "title": "Playing Overwatch",
+        "viewers": 50000,
+        "followers": 1000000,
+        "lastLiveAt": "2026-03-01T12:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+**Functions:**
+
+| Function | Description |
+|----------|-------------|
+| `getGuildSettings(guildId)` | Get or create guild settings |
+| `getStreamers(guildId)` | Get all streamers for guild |
+| `getStreamer(guildId, streamerId)` | Get single streamer |
+| `addStreamer(guildId, streamer)` | Add new streamer (no duplicates) |
+| `removeStreamer(guildId, streamerId)` | Remove streamer |
+| `updateStreamer(guildId, id, data)` | Update single streamer |
+| `updateStreamers(guildId, streamers)` | Batch update all streamers |
+| `createStreamerId(platform, username)` | Generate ID: "platform:username" |
+| `parseStreamerId(id)` | Parse ID into parts |
+| `getAllGuildsWithStreamers()` | Get all guilds with tracked streamers |
+| `getTotalStreamerCount()` | Count streamers across all guilds |
+
+**Lifecycle:**
+- Load from `data/guilds.json` on module import
+- Maintain in-memory `Map<string, GuildSettings>`
+- Save to disk on every write operation
+- Auto-create data directory if missing
+
+See: `~/workspace/source/src/database/index.ts`
+
+---
+
+### Events
+
+#### `src/events/ready.ts`
+
+Handles Discord `ready` event when bot comes online.
+
+**Actions:**
+1. Log bot username and guild count
+2. Start activity rotation (30s interval)
+3. Create and start stream poller (60s interval)
+
+```typescript
+export function handleReady(client: StreamerBot): void {
+  logger.info(`Logged in as ${client.user?.tag}`);
+  
+  client.startActivityRotation();
+  
+  const poller = createStreamPoller(client);
+  poller.start();
+}
+```
+
+See: `~/workspace/source/src/events/ready.ts`
+
+#### `src/events/interactionCreate.ts`
+
+Routes Discord interactions to appropriate handlers:
+
+- **ChatInputCommand** → Command execution
+- **Button** → Button handler
+- **SelectMenu** → Select menu handler
+
+---
+
+### Handlers
+
+#### `src/handlers/buttons.ts`
+
+Handles button click interactions:
+
+- Confirmation buttons (Yes/Cancel for removals)
+- Pagination buttons (Previous/Next for lists)
+
+#### `src/handlers/selectMenus.ts`
+
+Handles select menu interactions:
+
+- Channel selection (for adding streamers)
+- Streamer selection (for removing streamers)
+- Platform selection (for help menu)
+
+---
+
+### Platforms
+
+#### `src/platforms/index.ts`
+
+Platform checker registry and factory.
+
+**Exports:**
+```typescript
+export function getChecker(platform: Platform): PlatformChecker {
+  // Returns appropriate checker function
+}
+```
+
+#### Individual Platform Checkers
+
+Each platform module exports a checker function:
+
+```typescript
+export async function checkKick(username: string): Promise<LiveStatus> {
+  // Fetch and parse platform-specific data
+}
+```
+
+**Platforms:**
+- `kick.ts` - Kick.com HTML parser
+- `twitch.ts` - Twitch GraphQL API
+- `youtube.ts` - YouTube HTML parser
+- `rumble.ts` - Rumble HTML parser
+- `tiktok.ts` - TikTok HTML parser
+
+---
+
+### Services
+
+#### `src/services/StreamPoller.ts`
+
+Polling engine that checks stream status periodically.
+
+**Class:** `StreamPoller`
+
+**Methods:**
+- `start()` - Begin polling loop
+- `stop()` - Stop polling loop
+- `poll()` - Execute single poll cycle (private)
+- `checkGuildStreamers(guildId, streamers)` - Check all streamers for a guild (private)
+- `checkStreamer(streamer)` - Fetch status for one streamer (private)
+- `processStatus(guildId, streamer, status)` - Handle status update and send alerts (private)
+
+**Cache:**
+```typescript
+const lastLiveData = new Map<string, { 
+  title?: string; 
+  isLive: boolean 
+}>();
+```
+
+See: `~/workspace/source/src/services/StreamPoller.ts`
+
+#### `src/services/AlertService.ts`
+
+Alert sending service.
+
+**Function:** `sendLiveAlert(client, channelId, status)`
+
+**Process:**
+1. Fetch Discord channel
+2. Validate channel is text-based
+3. Create live embed
+4. Create watch button
+5. Send message
+6. Log result
+
+See: `~/workspace/source/src/services/AlertService.ts:10-39`
+
+---
+
+### Types
+
+#### `src/types/streamer.ts`
+
+Streamer data types:
+
+```typescript
+export interface Streamer {
+  id: string;
+  platform: Platform;
+  username: string;
+  channelId: string;
+  isLive: boolean;
+  title?: string;
+  viewers?: number;
+  followers?: number;
+  thumbnail?: string;
+  profileImage?: string;
+  lastLiveAt?: string;
+  startedAt?: string;
+  verified?: boolean;
+  bio?: string;
+}
+
+export interface LiveStatus {
+  platform: Platform;
+  username: string;
+  isLive: boolean;
+  url: string;
+  title?: string;
+  viewers?: number;
+  // ... more fields
+}
+
+export type Platform = 'kick' | 'twitch' | 'youtube' | 'rumble' | 'tiktok';
+```
+
+#### `src/types/discord.ts`
+
+Discord.js extension types:
+
+```typescript
+export interface Command {
+  data: SlashCommandBuilder;
+  execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
+}
+
+export interface StreamerBotClient extends Client {
+  commands: Collection<string, Command>;
+  updateActivity(): void;
+  startActivityRotation(intervalMs?: number): void;
+  registerCommand(command: Command): void;
+  getCommand(name: string): Command | undefined;
+}
+```
+
+---
+
+### Utilities
+
+#### `src/utils/constants.ts`
+
+Application-wide constants.
+
+**Exports:**
+- `PLATFORMS` - Platform metadata (name, color, emoji, URL template)
+- `POLL_INTERVAL` - 60000ms (60 seconds)
+- `ITEMS_PER_PAGE` - 10 (for pagination)
+- `Colors` - Embed color scheme
+- `FOOTER` - Standard embed footer
+- `PLATFORM_CHOICES` - Slash command choices
+
+```typescript
+export const POLL_INTERVAL = 60 * 1000; // 60 seconds
+```
+
+See: `~/workspace/source/src/utils/constants.ts:50-52`
+
+#### `src/utils/formatters.ts`
+
+Display formatting utilities:
+
+- Number formatting (1234 → "1,234")
+- Time formatting ("2 hours ago")
+- Username sanitization
+
+#### `src/utils/logger.ts`
+
+Structured logging utility:
+
+```typescript
+logger.info("Message");
+logger.error("Error", error);
+logger.debug("Debug info");
+logger.platform(platform, username, isLive);
+```
+
+<Note>
+The project follows a **domain-driven** structure where related functionality is grouped into logical modules (commands, services, platforms, etc.).
+</Note>
+
+## Build and Output
+
+### TypeScript Compilation
+
+```bash
+npm run build  # Compiles src/ → dist/
+```
+
+**tsconfig.json settings:**
+- Target: ES2020
+- Module: ESNext
+- Module Resolution: Node16 (for `.js` imports)
+- Strict mode enabled
+
+### Runtime Files
+
+```
+dist/
+├── index.js
+├── client/
+│   └── StreamerBot.js
+├── commands/
+├── services/
+└── ...
+```
+
+**Entry point:** `node dist/index.js`
+
+## Configuration Files
+
+### `.env`
+
+```bash
+DISCORD_TOKEN=your_discord_bot_token_here
+NODE_ENV=production  # Optional
+LOG_LEVEL=info       # Optional: debug, info, warn, error
+```
+
+### `package.json`
+
+Key scripts:
+
+```json
+{
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "deploy": "tsx scripts/deploy-commands.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/"
+  }
+}
+```
+
+<Info>
+The project uses **ES modules** (`.js` file extensions in imports) for modern Node.js compatibility.
+</Info>
