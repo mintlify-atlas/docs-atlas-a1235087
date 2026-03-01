@@ -1,0 +1,94 @@
+{
+  "projectType": "general",
+  "projectName": "Streamer Alerts Bot",
+  "projectDescription": "Multi-platform Discord bot that monitors streamers and sends live notifications without requiring API keys",
+  "theme": "almond",
+  "primaryColor": "#5865F2",
+  "lightColor": "#7289DA",
+  "darkColor": "#4752C4",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "configuration"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/platforms",
+              "features/commands",
+              "features/alerts"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/bot-setup",
+              "guides/adding-streamers",
+              "guides/managing-alerts",
+              "guides/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": [
+              "development/overview",
+              "development/project-structure",
+              "development/how-it-works"
+            ]
+          },
+          {
+            "group": "API Reference",
+            "pages": [
+              "api/client",
+              "api/platforms",
+              "api/services",
+              "api/database",
+              "api/types"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "development/setup",
+              "development/adding-platforms",
+              "development/contributing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-platform support (Kick, Twitch, YouTube, Rumble, TikTok)",
+    "No API keys required - uses public endpoints and HTML parsing",
+    "Real-time alerts with 60-second polling",
+    "Modern Discord UI with buttons, select menus, and rich embeds",
+    "Per-server configuration with persistent JSON storage",
+    "Smart duplicate detection based on stream title changes",
+    "TypeScript with strict typing and full type safety",
+    "Zero-configuration database with JSON file storage"
+  ],
+  "publicApiSurface": [
+    "StreamerBot (Discord.js Client Extension)",
+    "createClient() - Client factory",
+    "StreamPoller - Polling service",
+    "AlertService.sendLiveAlert() - Send notifications",
+    "Platform checkers: checkKick, checkTwitch, checkYouTube, checkRumble, checkTikTok",
+    "Database: addStreamer, removeStreamer, getStreamers, updateStreamer",
+    "Commands: /streamer add, /streamer remove, /streamer list, /help, /ping",
+    "Types: Platform, LiveStatus, Streamer, GuildSettings, PlatformChecker"
+  ]
+}
