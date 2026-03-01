@@ -90,6 +90,30 @@ To find your guild ID:
   </Step>
 </Steps>
 
+#### LOG_LEVEL
+
+Optional logging level for debugging. When set to `debug`, the bot will output detailed platform check results and internal operations.
+
+```bash .env
+LOG_LEVEL=debug
+```
+
+<Info>
+  **Available values:**
+  - `debug` - Show all logs including platform checks
+  - Not set (default) - Show only info, warnings, and errors
+</Info>
+
+From `src/utils/logger.ts`:
+
+```typescript
+debug(message: string, ...args: unknown[]): void {
+  if (process.env.LOG_LEVEL === "debug") {
+    console.log(formatMessage("debug", message, ...args));
+  }
+}
+```
+
 ### Environment file example
 
 Your complete `.env` file should look like this:
